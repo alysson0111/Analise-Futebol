@@ -156,7 +156,11 @@ export default function App() {
     listSignals()
       .then((payload) => setSignals(payload.signals || []))
       .catch((error) => setBankStatus(`Configure Firebase no servidor: ${error.message}`));
-    live.start();
+    live.start().catch((error) => {
+      live.stop();
+      setBankStatus(`Erro ao iniciar ao vivo: ${error.message}`);
+      console.error(error);
+    });
   }, []);
 
   async function openLive() {
