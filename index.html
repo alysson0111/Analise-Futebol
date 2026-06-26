@@ -986,12 +986,27 @@
     els.exportCsvBtn.addEventListener("click", exportSignalsCsv);
     els.exportPdfBtn.addEventListener("click", exportSignalsPdf);
 
-    els.dateStart.value = todayInput();
-    els.dateEnd.value = todayInput();
-    render();
-    loadSignals().catch((error) => {
-      els.bankStatus.textContent = `Configure Firebase no servidor: ${error.message}`;
-    });
+    async function bootApp() {
+      els.dateStart.value = todayInput();
+      els.dateEnd.value = todayInput();
+      els.updatedAt.textContent = "Iniciando modo ao vivo...";
+      render();
+
+      loadSignals().catch((error) => {
+        els.bankStatus.textContent = `Configure Firebase no servidor: ${error.message}`;
+      });
+
+      try {
+        await startLiveMode();
+      } catch (error) {
+        stopLiveMode();
+        games = [];
+        render();
+        els.updatedAt.textContent = `Erro ao iniciar ao vivo: ${error.message}`;
+      }
+    }
+
+    bootApp();
   </script>
 </body>
 </html>
