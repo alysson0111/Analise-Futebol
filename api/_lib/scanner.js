@@ -1,7 +1,8 @@
-const MARKETS = ["over05", "over25", "under25", "corners"];
+const MARKETS = ["over05", "over15", "over25", "under25", "corners"];
 
 const MARKET_LABELS = {
   over05: "+0.5 gols",
+  over15: "+1.5 gols",
   over25: "+2.5 gols",
   under25: "Under 2.5",
   corners: "Escanteios"
@@ -51,6 +52,26 @@ function scanOver05(game) {
   return result(game, {
     confidence: passed ? 78 : 0,
     odd: game.odd || 1,
+    status: passed ? "Entrada" : "Observar"
+  }, checks);
+}
+
+function scanOver15(game) {
+  const xgPass = game.xgPercent ? game.xgPercent >= 55 : game.xgTotal >= 0.55;
+  const oddOk = game.over15Odd >= 1.60;
+  const checks = [
+    item("xG minimo para Over 1.5", xgPass, game.xgPercent ? `${game.xgPercent}%` : game.xgAvailable ? `xG ${game.xgTotal.toFixed(2)}` : "indisponivel", game.xgAvailable || Boolean(game.xgPercent)),
+    item("Total de finalizacoes >= 10", game.liveShots >= 10 || game.avgShotsPerGame >= 10, `${Math.max(game.liveShots, game.avgShotsPerGame).toFixed(1)}`, game.hasShots),
+    item("Finalizacoes no alvo >= 5", game.shotsOnTargetTotal >= 5, `${game.shotsOnTargetTotal.toFixed(1)}`, game.hasShots),
+    item("Escanteios >= 5", game.liveCorners >= 5 || game.avgCornersTotal >= 5, `${Math.max(game.liveCorners, game.avgCornersTotal).toFixed(1)}`, game.hasCorners),
+    item("Odd >= 1.60", oddOk, game.over15Odd ? game.over15Odd.toFixed(2) : "indisponivel", Boolean(game.over15Odd))
+  ];
+  const passed = checks.every((entry) => entry.available && entry.passed);
+  const confidence = passed ? Math.min(90, 55 + checks.filter((entry) => entry.passed).length * 7) : 0;
+
+  return result(game, {
+    confidence,
+    odd: game.over15Odd || game.odd || 1,
     status: passed ? "Entrada" : "Observar"
   }, checks);
 }
@@ -181,12 +202,14 @@ function normalizeFixture(row) {
     bttsPercent: percent(row.bothTeamsScorePercent || row.bttsPercent || row.ambosMarcamPercentual),
     avgGoalsTotal: asNumber(row.avgGoalsTotal || row.mediaGolsConjunta || row.averageGoalsTotal || totalGoals),
     xgTotal: asNumber(row.xgTotal || row.xgConjunto || row.expectedGoalsTotal),
-    xgAvailable: Boolean(row.xgTotal || row.xgConjunto || row.expectedGoalsTotal),
+    xgPercent: asNumber(row.xgPercent || row.percentualXg || row.xgPercentage),
+    xgAvailable: Boolean(row.xgTotal || row.xgConjunto || row.expectedGoalsTotal || row.xgPercent || row.percentualXg || row.xgPercentage),
     zeroZeroLast5Both: asNumber(row.zeroZeroLast5Both || row.zeroAZeroUltimos5Ambos),
     avgGoalsBothTeams: asNumber(row.avgGoalsBothTeams || row.mediaGolsDoisTimes || row.averageGoalsBothTeams || totalGoals),
     favoriteAtHome: asBool(row.favoriteAtHome || row.favoritoEmCasa || row.homeFavorite),
     bttsLast10Percent: percent(row.bothTeamsScoredLast10Percent || row.ambosMarcaramUltimos10Percentual || row.bttsLast10Percent),
     avgShotsPerGame: asNumber(row.avgShotsPerGame || row.mediaFinalizacoes || row.averageShotsPerGame || liveShots),
+    over15Odd: asNumber(row.over15Odd || row.oddOver15 || row.overOnePointFiveOdd),
     over25Odd: asNumber(row.over25Odd || row.oddOver25 || row.overTwoPointFiveOdd),
     homeFavoriteByModel: asBool(row.homeFavoriteByModel || row.favoritoMandanteModelo || row.favoritoEmCasaModelo),
     avgCornersTotal: asNumber(row.avgCornersTotal || row.mediaEscanteiosConjunta || row.averageCornersTotal || liveCorners),
@@ -213,6 +236,7 @@ export function analyzeFixtures(payload) {
     return MARKETS.map((market) => {
       const game = { ...base, market, marketLabel: MARKET_LABELS[market] };
       if (market === "over05") return scanOver05(game);
+      if (market === "over15") return scanOver15(game);
       if (market === "over25") return scanOver25(game);
       if (market === "under25") return scanUnder25(game);
       return scanCorners(game);
