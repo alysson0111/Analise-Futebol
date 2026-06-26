@@ -45,18 +45,18 @@ export default function GameCard({ games, updatedAt, onSave }) {
                 <td>{game.league}</td>
                 <td>{game.liveStatus || game.time || "-"}</td>
                 <td>{game.scoreText || "-"}</td>
-                <td>{game.marketLabel || getMarketLabel(game.market)}</td>
-                <td>{currencyOdd(game.odd)}</td>
+                <td>{game.analise?.label || game.marketLabel || getMarketLabel(game.market)}</td>
+                <td>{currencyOdd(game.analise?.odd ?? game.odd)}</td>
                 <td>{game.dateText || "-"}</td>
-                <td>{Math.round(Number(game.confidence || 0))}%</td>
+                <td>{Math.round(Number(game.analise?.confianca ?? game.confidence ?? 0))}%</td>
                 <td>
                   <div className="stats">
-                    {(game.stats || []).slice(0, 8).map((entry) => <span key={entry}>{entry}</span>)}
-                    {!(game.stats || []).length && <span>Sem sinal pelo scanner</span>}
+                    {(game.analise?.sinais || game.stats || []).slice(0, 8).map((entry) => <span key={entry}>{entry}</span>)}
+                    {!(game.analise?.sinais || game.stats || []).length && <span>Sem sinal pelo scanner</span>}
                   </div>
                 </td>
-                <td><AnalysisBadge status={game.status} /></td>
-                <td>{game.status === "Entrada" && <button className="btn" onClick={() => onSave(game)}>Salvar</button>}</td>
+                <td><AnalysisBadge status={game.analise?.status || game.status} /></td>
+                <td>{(game.analise?.entrada || game.status === "Entrada") && <button className="btn" onClick={() => onSave(game)}>Salvar</button>}</td>
               </tr>
             ))}
           </tbody>

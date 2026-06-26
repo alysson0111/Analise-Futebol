@@ -168,7 +168,7 @@ export default function App() {
   }
 
   async function saveCurrentSignals() {
-    const entries = analysis.filteredGames.filter((game) => game.status === "Entrada");
+    const entries = analysis.filteredGames.filter((game) => game.analise?.entrada || game.status === "Entrada");
     for (const game of entries) {
       const saved = await saveSignal(game);
       setSignals((current) => [saved, ...current]);

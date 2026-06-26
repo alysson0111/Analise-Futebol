@@ -1,23 +1,34 @@
 import { useMemo } from "react";
+import { analisarMercado } from "../analysis/index.js";
 
 export function useGameAnalysis(games, filters) {
   return useMemo(() => {
-    const leagues = [...new Set(games.map((game) => game.league).filter(Boolean))].sort();
-    const filteredGames = games.filter((game) => {
+    const selectedMarket = filters.market || "all";
+    const jogosComAnalise = games.map((jogo) => {
+      const analise = analisarMercado(jogo, selectedMarket);
+
+      return {
+        ...jogo,
+        analise
+      };
+    });
+
+    const leagues = [...new Set(jogosComAnalise.map((game) => game.league).filter(Boolean))].sort();
+    const filteredGames = jogosComAnalise.filter((game) => {
       if (filters.league !== "all" && game.league !== filters.league) return false;
-      if (filters.market !== "all" && game.market !== filters.market) return false;
-      if (Number(game.confidence || 0) < Number(filters.minConfidence || 0)) return false;
-      if (Number(game.odd || 0) < Number(filters.minOdd || 1)) return false;
+      if (selectedMarket !== "all" && game.market !== selectedMarket) return false;
+      if (Number(game.analise.confianca || 0) < Number(filters.minConfidence || 0)) return false;
+      if (Number(game.analise.odd || 0) < Number(filters.minOdd || 1)) return false;
       const search = String(filters.search || "").trim().toLowerCase();
       if (search && !`${game.home} ${game.away} ${game.league}`.toLowerCase().includes(search)) return false;
       return true;
     });
 
-    const entries = filteredGames.filter((game) => game.status === "Entrada");
-    const oddAvg = entries.length ? entries.reduce((sum, game) => sum + Number(game.odd || 0), 0) / entries.length : 0;
-    const confidenceAvg = entries.length ? entries.reduce((sum, game) => sum + Number(game.confidence || 0), 0) / entries.length : 0;
-    const marketCounts = games.reduce((acc, game) => {
-      if (game.status === "Entrada") acc[game.market] = (acc[game.market] || 0) + 1;
+    const entries = filteredGames.filter((game) => game.analise.entrada);
+    const oddAvg = entries.length ? entries.reduce((sum, game) => sum + Number(game.analise.odd || 0), 0) / entries.length : 0;
+    const confidenceAvg = entries.length ? entries.reduce((sum, game) => sum + Number(game.analise.confianca || 0), 0) / entries.length : 0;
+    const marketCounts = jogosComAnalise.reduce((acc, game) => {
+      if (game.analise.entrada) acc[game.market] = (acc[game.market] || 0) + 1;
       return acc;
     }, {});
 
