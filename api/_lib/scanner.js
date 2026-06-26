@@ -9,7 +9,7 @@ const MARKET_LABELS = {
 };
 
 function asNumber(value, fallback = 0) {
-  const number = Number(value);
+  const number = Number(String(value ?? "").replace(",", "."));
   return Number.isFinite(number) ? number : fallback;
 }
 
@@ -42,16 +42,16 @@ function result(game, patch, checks) {
 }
 
 function scanOver05(game) {
+  const isZeroZero = game.homeGoals === 0 && game.awayGoals === 0;
+  const oddOk = game.over05Odd >= 1.60;
   const checks = [
-    item("Ambos marcam acima do limite", game.bttsPercent > 55, `${game.bttsPercent}%`, game.hasHistory),
-    item("Media conjunta de gols suficiente", game.avgGoalsTotal > 2.5, `${game.avgGoalsTotal.toFixed(2)}`, game.hasHistory),
-    item("xG conjunto suficiente", game.xgTotal > 2.3, game.xgAvailable ? game.xgTotal.toFixed(2) : "indisponivel", game.xgAvailable),
-    item("Sem 0x0 recente nos dois times", game.zeroZeroLast5Both === 0, `${game.zeroZeroLast5Both}`, game.hasHistory)
+    item("Placar 0x0", isZeroZero, game.scoreText || "-", true),
+    item("Odd Over 0.5 >= 1.60", oddOk, game.over05Odd ? game.over05Odd.toFixed(2) : "indisponivel", Boolean(game.over05Odd))
   ];
   const passed = checks.every((entry) => entry.available && entry.passed);
   return result(game, {
-    confidence: passed ? 78 : 0,
-    odd: game.odd || 1,
+    confidence: passed ? 75 : 0,
+    odd: game.over05Odd || game.odd || 0,
     status: passed ? "Entrada" : "Observar"
   }, checks);
 }
@@ -153,6 +153,37 @@ function getStatMax(row, type) {
   }));
 }
 
+function getOddFromBookmakers(bookmakers, names) {
+  const wanted = names.map((name) => name.toLowerCase());
+  for (const bookmaker of bookmakers || []) {
+    for (const bet of bookmaker.bets || []) {
+      for (const value of bet.values || []) {
+        const label = String(value.value || value.label || "").toLowerCase();
+        if (wanted.some((name) => label === name || label.includes(name))) {
+          const odd = asNumber(value.odd);
+          if (odd > 0) return odd;
+        }
+      }
+    }
+  }
+  return 0;
+}
+
+function getMarketOdd(row, directFields, names) {
+  for (const field of directFields) {
+    const odd = asNumber(row[field]);
+    if (odd > 0) return odd;
+  }
+
+  const oddsRows = Array.isArray(row.oddsPayload) ? row.oddsPayload : [];
+  for (const oddsRow of oddsRows) {
+    const odd = getOddFromBookmakers(oddsRow.bookmakers, names);
+    if (odd > 0) return odd;
+  }
+
+  return getOddFromBookmakers(row.bookmakers, names);
+}
+
 function buildGameData({ totalGoals, liveCorners, liveShots, liveShotsOnTarget, elapsed, apiStatus, hasLiveStats }) {
   const data = [
     `DADO | Gols no jogo | ${totalGoals}`,
@@ -193,12 +224,14 @@ function normalizeFixture(row) {
     dateText: kickoff && !Number.isNaN(kickoff.getTime()) ? kickoff.toLocaleDateString("pt-BR") : "-",
     liveStatus: elapsed ? `${elapsed}'` : apiStatus || "",
     scoreText: `${homeGoals}x${awayGoals}`,
+    homeGoals,
+    awayGoals,
     totalGoals,
     liveCorners,
     liveShots,
     liveShotsOnTarget,
     dadosJogo: buildGameData({ totalGoals, liveCorners, liveShots, liveShotsOnTarget, elapsed, apiStatus, hasLiveStats }),
-    odd: 1,
+    odd: 0,
     bttsPercent: percent(row.bothTeamsScorePercent || row.bttsPercent || row.ambosMarcamPercentual),
     avgGoalsTotal: asNumber(row.avgGoalsTotal || row.mediaGolsConjunta || row.averageGoalsTotal || totalGoals),
     xgTotal: asNumber(row.xgTotal || row.xgConjunto || row.expectedGoalsTotal),
@@ -209,6 +242,7 @@ function normalizeFixture(row) {
     favoriteAtHome: asBool(row.favoriteAtHome || row.favoritoEmCasa || row.homeFavorite),
     bttsLast10Percent: percent(row.bothTeamsScoredLast10Percent || row.ambosMarcaramUltimos10Percentual || row.bttsLast10Percent),
     avgShotsPerGame: asNumber(row.avgShotsPerGame || row.mediaFinalizacoes || row.averageShotsPerGame || liveShots),
+    over05Odd: getMarketOdd(row, ["over05Odd", "oddOver05", "overZeroPointFiveOdd"], ["over 0.5", "over 0.5 goals", "over 0,5"]),
     over15Odd: asNumber(row.over15Odd || row.oddOver15 || row.overOnePointFiveOdd),
     over25Odd: asNumber(row.over25Odd || row.oddOver25 || row.overTwoPointFiveOdd),
     homeFavoriteByModel: asBool(row.homeFavoriteByModel || row.favoritoMandanteModelo || row.favoritoEmCasaModelo),

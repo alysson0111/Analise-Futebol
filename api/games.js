@@ -2,6 +2,7 @@ import { analyzeFixtures, publicGame } from "./_lib/scanner.js";
 
 const API_BASE = "https://v3.football.api-sports.io/fixtures";
 const API_STATISTICS = "https://v3.football.api-sports.io/fixtures/statistics";
+const API_ODDS = "https://v3.football.api-sports.io/odds";
 
 function send(res, status, body) {
   res.statusCode = status;
@@ -65,6 +66,25 @@ async function enrichLive(payload, token) {
   }));
 }
 
+async function enrichOdds(payload, token) {
+  const rows = getRows(payload).slice(0, 50);
+  await Promise.all(rows.map(async (row) => {
+    const fixtureId = row.fixture?.id;
+    if (!fixtureId) return;
+
+    try {
+      const response = await fetch(`${API_ODDS}?fixture=${fixtureId}`, {
+        headers: { "x-apisports-key": token }
+      });
+      if (!response.ok) return;
+      const odds = await response.json();
+      row.oddsPayload = getRows(odds);
+    } catch {
+      row.oddsPayload = [];
+    }
+  }));
+}
+
 export default async function handler(req, res) {
   if (req.method !== "GET") return send(res, 405, { error: "Metodo nao permitido." });
 
@@ -78,13 +98,16 @@ export default async function handler(req, res) {
     if (mode === "live") {
       const payload = await fetchApi("?live=all", token);
       await enrichLive(payload, token);
+      await enrichOdds(payload, token);
       payloads.push(payload);
     } else {
       const today = new Date().toISOString().slice(0, 10);
       const start = parseDate(req.query.start) || today;
       const end = parseDate(req.query.end) || start;
       for (const day of dateRange(start, end)) {
-        payloads.push(await fetchApi(`?date=${day}`, token));
+        const payload = await fetchApi(`?date=${day}`, token);
+        await enrichOdds(payload, token);
+        payloads.push(payload);
       }
     }
 
