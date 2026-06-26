@@ -30,6 +30,7 @@ export function useGameAnalysis(games, filters) {
     });
 
     const entries = filteredGames.filter((game) => game.analise.entrada);
+    const uniqueGames = new Set(filteredGames.map((game) => game.sourceId || game.key)).size;
     const oddAvg = entries.length ? entries.reduce((sum, game) => sum + Number(game.analise.odd || 0), 0) / entries.length : 0;
     const confidenceAvg = entries.length ? entries.reduce((sum, game) => sum + Number(game.analise.confianca || 0), 0) / entries.length : 0;
     const marketCounts = jogosComAnalise.reduce((acc, game) => {
@@ -42,7 +43,7 @@ export function useGameAnalysis(games, filters) {
       filteredGames,
       marketCounts,
       metrics: {
-        games: filteredGames.length,
+        games: uniqueGames,
         entries: entries.length,
         oddAvg,
         confidenceAvg

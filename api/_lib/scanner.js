@@ -71,7 +71,7 @@ function scanOver15(game) {
 
   return result(game, {
     confidence,
-    odd: game.over15Odd || game.odd || 1,
+    odd: game.over15Odd || game.odd || 0,
     status: passed ? "Entrada" : "Observar"
   }, checks);
 }
@@ -88,7 +88,7 @@ function scanOver25(game) {
   const passed = checks.every((entry) => entry.available && entry.passed);
   return result(game, {
     confidence: passed ? 82 : 0,
-    odd: game.over25Odd || game.odd || 1,
+    odd: game.over25Odd || game.odd || 0,
     status: passed ? "Entrada" : "Observar"
   }, checks);
 }
@@ -112,7 +112,7 @@ function scanUnder25(game) {
   const passed = points >= 8;
   return result(game, {
     confidence: passed ? Math.min(92, 58 + points * 4) : 0,
-    odd: game.under25Odd || game.odd || 1,
+    odd: game.under25Odd || game.odd || 0,
     grade,
     status: passed ? "Entrada" : "Observar",
     statsPrefix: `CLASSIFICACAO ${grade} (${points}/10)`
@@ -129,7 +129,7 @@ function scanCorners(game) {
   const probability = passed ? Math.max(65, Math.min(88, Math.round(55 + (game.avgCornersTotal - 10) * 10))) : 0;
   return result(game, {
     confidence: probability,
-    odd: game.odd || 1,
+    odd: game.odd || 0,
     status: passed ? "Entrada" : "Observar",
     generatedSignals: passed ? ["Over 8.5 escanteios", "Over 9.5 escanteios", "Over 10.5 escanteios"] : []
   }, checks);
@@ -243,8 +243,8 @@ function normalizeFixture(row) {
     bttsLast10Percent: percent(row.bothTeamsScoredLast10Percent || row.ambosMarcaramUltimos10Percentual || row.bttsLast10Percent),
     avgShotsPerGame: asNumber(row.avgShotsPerGame || row.mediaFinalizacoes || row.averageShotsPerGame || liveShots),
     over05Odd: getMarketOdd(row, ["over05Odd", "oddOver05", "overZeroPointFiveOdd"], ["over 0.5", "over 0.5 goals", "over 0,5"]),
-    over15Odd: asNumber(row.over15Odd || row.oddOver15 || row.overOnePointFiveOdd),
-    over25Odd: asNumber(row.over25Odd || row.oddOver25 || row.overTwoPointFiveOdd),
+    over15Odd: getMarketOdd(row, ["over15Odd", "oddOver15", "overOnePointFiveOdd"], ["over 1.5", "over 1.5 goals", "over 1,5"]),
+    over25Odd: getMarketOdd(row, ["over25Odd", "oddOver25", "overTwoPointFiveOdd"], ["over 2.5", "over 2.5 goals", "over 2,5"]),
     homeFavoriteByModel: asBool(row.homeFavoriteByModel || row.favoritoMandanteModelo || row.favoritoEmCasaModelo),
     avgCornersTotal: asNumber(row.avgCornersTotal || row.mediaEscanteiosConjunta || row.averageCornersTotal || liveCorners),
     favoriteAvgShots: asNumber(row.favoriteAvgShots || row.mediaFinalizacoesFavorito || row.favoriteAverageShots || favoriteShots),
@@ -254,7 +254,7 @@ function normalizeFixture(row) {
     shotsOnTargetTotal: asNumber(row.shotsOnTargetTotal || row.finalizacoesCertasSomadas || liveShotsOnTarget),
     firstHalfGoalPercent: percent(row.firstHalfGoalPercent || row.percentualGolPrimeiroTempo),
     decisiveGame: asBool(row.decisiveGame || row.jogoDecisivo),
-    under25Odd: asNumber(row.under25Odd || row.oddUnder25 || row.underTwoPointFiveOdd),
+    under25Odd: getMarketOdd(row, ["under25Odd", "oddUnder25", "underTwoPointFiveOdd"], ["under 2.5", "under 2.5 goals", "under 2,5"]),
     underFriendlyLeague: row.underFriendlyLeague === undefined ? true : asBool(row.underFriendlyLeague),
     hasHistory,
     hasModel: Boolean(row.favoriteAtHome || row.homeFavoriteByModel || row.favoritoEmCasaModelo),

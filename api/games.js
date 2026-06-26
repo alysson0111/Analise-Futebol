@@ -111,10 +111,12 @@ export default async function handler(req, res) {
       }
     }
 
+    const fixtureCount = payloads.reduce((sum, payload) => sum + getRows(payload).length, 0);
     const games = payloads.flatMap((payload) => analyzeFixtures(payload)).map(publicGame);
     send(res, 200, {
       updatedAt: new Date().toISOString(),
-      count: games.length,
+      count: fixtureCount,
+      marketRows: games.length,
       games
     });
   } catch (error) {
