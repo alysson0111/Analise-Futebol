@@ -132,11 +132,30 @@ function getStatMax(row, type) {
   }));
 }
 
+function buildGameData({ totalGoals, liveCorners, liveShots, liveShotsOnTarget, elapsed, apiStatus, hasLiveStats }) {
+  const data = [
+    `DADO | Gols no jogo | ${totalGoals}`,
+    `DADO | Tempo/status | ${elapsed ? `${elapsed}'` : apiStatus || "-"}`
+  ];
+
+  if (hasLiveStats) {
+    data.push(`DADO | Escanteios ao vivo | ${liveCorners}`);
+    data.push(`DADO | Finalizacoes ao vivo | ${liveShots}`);
+    data.push(`DADO | Finalizacoes no alvo | ${liveShotsOnTarget}`);
+  } else {
+    data.push("DADO | Estatisticas ao vivo | API nao trouxe estatisticas");
+  }
+
+  return data;
+}
+
 function normalizeFixture(row) {
   const kickoff = row.fixture?.date ? new Date(row.fixture.date) : null;
   const homeGoals = asNumber(row.goals?.home);
   const awayGoals = asNumber(row.goals?.away);
   const totalGoals = homeGoals + awayGoals;
+  const elapsed = row.fixture?.status?.elapsed;
+  const apiStatus = row.fixture?.status?.short;
   const liveCorners = getStatTotal(row, "Corner Kicks");
   const liveShots = getStatTotal(row, "Total Shots");
   const liveShotsOnTarget = getStatTotal(row, "Shots on Goal");
@@ -151,9 +170,13 @@ function normalizeFixture(row) {
     league: row.league?.name || "Liga",
     time: kickoff && !Number.isNaN(kickoff.getTime()) ? kickoff.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "--:--",
     dateText: kickoff && !Number.isNaN(kickoff.getTime()) ? kickoff.toLocaleDateString("pt-BR") : "-",
-    liveStatus: row.fixture?.status?.elapsed ? `${row.fixture.status.elapsed}'` : row.fixture?.status?.short || "",
+    liveStatus: elapsed ? `${elapsed}'` : apiStatus || "",
     scoreText: `${homeGoals}x${awayGoals}`,
     totalGoals,
+    liveCorners,
+    liveShots,
+    liveShotsOnTarget,
+    dadosJogo: buildGameData({ totalGoals, liveCorners, liveShots, liveShotsOnTarget, elapsed, apiStatus, hasLiveStats }),
     odd: 1,
     bttsPercent: percent(row.bothTeamsScorePercent || row.bttsPercent || row.ambosMarcamPercentual),
     avgGoalsTotal: asNumber(row.avgGoalsTotal || row.mediaGolsConjunta || row.averageGoalsTotal || totalGoals),
@@ -208,6 +231,11 @@ export function publicGame(game) {
     dateText: game.dateText,
     liveStatus: game.liveStatus,
     scoreText: game.scoreText,
+    totalGoals: game.totalGoals,
+    liveCorners: game.liveCorners,
+    liveShots: game.liveShots,
+    liveShotsOnTarget: game.liveShotsOnTarget,
+    dadosJogo: game.dadosJogo || [],
     market: game.market,
     marketLabel: game.marketLabel,
     odd: game.odd,

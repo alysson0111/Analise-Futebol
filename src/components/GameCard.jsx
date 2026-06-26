@@ -51,8 +51,9 @@ export default function GameCard({ games, updatedAt, onSave }) {
                 <td>{Math.round(Number(game.analise?.confianca ?? game.confidence ?? 0))}%</td>
                 <td>
                   <div className="stats">
-                    {(game.analise?.sinais || game.stats || []).slice(0, 8).map((entry) => <span key={entry}>{entry}</span>)}
-                    {!(game.analise?.sinais || game.stats || []).length && <span>Sem sinal pelo scanner</span>}
+                    {(game.analise?.dadosJogo || game.dadosJogo || []).map((entry) => <span key={entry}>{entry}</span>)}
+                    {(game.analise?.sinais || game.stats || []).slice(0, 6).map((entry) => <span key={entry}>{entry}</span>)}
+                    {!((game.analise?.dadosJogo || game.dadosJogo || []).length || (game.analise?.sinais || game.stats || []).length) && <span>Sem dados da API</span>}
                   </div>
                 </td>
                 <td><AnalysisBadge status={game.analise?.statusOriginal || game.status} /></td>

@@ -1,6 +1,7 @@
 import { analyzeFixtures, publicGame } from "./_lib/scanner.js";
 
 const API_BASE = "https://v3.football.api-sports.io/fixtures";
+const API_STATISTICS = "https://v3.football.api-sports.io/fixtures/statistics";
 
 function send(res, status, body) {
   res.statusCode = status;
@@ -52,7 +53,11 @@ async function enrichLive(payload, token) {
     if (!fixtureId) return;
 
     try {
-      const stats = await fetchApi(`/statistics?fixture=${fixtureId}`, token);
+      const response = await fetch(`${API_STATISTICS}?fixture=${fixtureId}`, {
+        headers: { "x-apisports-key": token }
+      });
+      if (!response.ok) return;
+      const stats = await response.json();
       row.liveStats = getRows(stats);
     } catch {
       row.liveStats = [];

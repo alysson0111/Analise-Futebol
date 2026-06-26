@@ -22,6 +22,7 @@ export function analisarMercado(jogo, mercadoSelecionado = "all") {
   const confianca = Number(jogo.confidence || 0);
   const odd = Number(jogo.odd || 0);
   const sinais = Array.isArray(jogo.stats) ? jogo.stats : [];
+  const dadosJogo = Array.isArray(jogo.dadosJogo) ? jogo.dadosJogo : [];
   const entrada = statusOriginal === "Entrada";
 
   return {
@@ -32,6 +33,7 @@ export function analisarMercado(jogo, mercadoSelecionado = "all") {
     confianca,
     odd,
     sinais,
+    dadosJogo,
     entrada,
     grade: jogo.grade || "",
     linhas: jogo.signals || []
