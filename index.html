@@ -233,10 +233,51 @@
       -webkit-overflow-scrolling: touch;
     }
 
-    table { width: 100%; border-collapse: collapse; min-width: 900px; }
+    .games-wrap { overflow-x: hidden; }
+
+    table { width: 100%; border-collapse: collapse; }
     th, td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: left; font-size: 14px; }
     th { color: var(--muted); font-size: 12px; text-transform: uppercase; background: #f7faf8; }
     tr:last-child td { border-bottom: 0; }
+
+    .games-table {
+      table-layout: fixed;
+      min-width: 0;
+    }
+
+    .games-table th,
+    .games-table td {
+      padding: 8px 6px;
+      font-size: 12px;
+      line-height: 1.25;
+      vertical-align: middle;
+      overflow-wrap: anywhere;
+    }
+
+    .games-table th { font-size: 10px; }
+    .games-table th:nth-child(1) { width: 16%; }
+    .games-table th:nth-child(2) { width: 10%; }
+    .games-table th:nth-child(3) { width: 5%; }
+    .games-table th:nth-child(4) { width: 6%; }
+    .games-table th:nth-child(5) { width: 8%; }
+    .games-table th:nth-child(6) { width: 5%; }
+    .games-table th:nth-child(7) { width: 8%; }
+    .games-table th:nth-child(8) { width: 7%; }
+    .games-table th:nth-child(9) { width: 20%; }
+    .games-table th:nth-child(10) { width: 7%; }
+    .games-table th:nth-child(11) { width: 8%; }
+
+    .games-table .btn {
+      min-height: 30px;
+      padding: 0 6px;
+      font-size: 11px;
+    }
+
+    .games-table .status {
+      padding: 4px 5px;
+      font-size: 10px;
+      gap: 4px;
+    }
 
     .status {
       display: inline-flex;
@@ -252,7 +293,7 @@
 
     .status.wait { background: #fff3de; color: #8a5207; }
     .dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
-    .stats { display: grid; gap: 4px; min-width: 220px; font-size: 12px; line-height: 1.25; color: var(--muted); }
+    .stats { display: grid; gap: 3px; min-width: 0; font-size: 11px; line-height: 1.2; color: var(--muted); }
     .empty { padding: 28px; color: var(--muted); text-align: center; }
 
     .mini-stats {
@@ -287,9 +328,14 @@
         min-width: 0;
       }
       .date-search, .filters, .metrics, .report-grid, .nav { grid-template-columns: 1fr; }
-      table { min-width: 760px; }
       th, td { padding: 10px; font-size: 13px; }
-      .stats { min-width: 180px; }
+      .games-table th,
+      .games-table td {
+        padding: 6px 4px;
+        font-size: 11px;
+      }
+      .games-table th { font-size: 9px; }
+      .stats { font-size: 10px; }
     }
 
     @media (max-width: 420px) {
@@ -297,7 +343,8 @@
       .main { padding: 12px; }
       .brand { align-items: flex-start; }
       .btn { padding: 0 10px; }
-      table { min-width: 680px; }
+      .games-table th,
+      .games-table td { font-size: 10px; }
     }
   </style>
 </head>
@@ -401,8 +448,8 @@
           <h2>Lista de jogos</h2>
           <span class="subtitle" id="updatedAt">Aguardando analise</span>
         </div>
-        <div class="table-wrap">
-          <table>
+        <div class="table-wrap games-wrap">
+          <table class="games-table">
             <thead>
               <tr>
                 <th>Jogo</th>
@@ -443,7 +490,7 @@
             <div class="mini-stat"><span>Assertividade</span><strong id="reportHitRate">0%</strong></div>
           </div>
           <div class="table-wrap">
-            <table>
+            <table class="report-table">
               <thead>
                 <tr>
                   <th>Data/Hora</th>
