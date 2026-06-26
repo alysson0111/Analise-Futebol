@@ -36,6 +36,17 @@ export default function FiltersBar({ leagues, filters, setFilters, selectedMarke
         <label htmlFor="search">Buscar jogo</label>
         <input id="search" placeholder="Time ou liga" value={filters.search} onChange={(event) => update("search", event.target.value)} />
       </div>
+      <div className="field check-field">
+        <label className="check-label" htmlFor="approvedOnly">
+          <input
+            id="approvedOnly"
+            type="checkbox"
+            checked={Boolean(filters.mostrarApenasAprovados)}
+            onChange={(event) => update("mostrarApenasAprovados", event.target.checked)}
+          />
+          Só aprovados
+        </label>
+      </div>
     </section>
   );
 }

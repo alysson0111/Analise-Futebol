@@ -60,12 +60,15 @@ const styles = `
   .date-search, .filters, .report-box { padding: 14px; }
   .date-search, .filters, .metrics, .report-grid { display: grid; gap: 12px; }
   .date-search { grid-template-columns: repeat(4, minmax(150px, 1fr)) auto; align-items: end; }
-  .filters { grid-template-columns: repeat(5, minmax(130px, 1fr)); }
+  .filters { grid-template-columns: repeat(6, minmax(120px, 1fr)); }
   .metrics { grid-template-columns: repeat(4, minmax(150px, 1fr)); }
   .report-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
   .field { display: grid; gap: 6px; }
   .field label { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }
   .field input, .field select { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); min-height: 40px; padding: 0 10px; outline: none; }
+  .check-field { align-content: end; }
+  .check-label { min-height: 40px; border: 1px solid var(--line); border-radius: 8px; background: #fff; display: flex; align-items: center; gap: 8px; padding: 0 10px; color: var(--ink); font-size: 13px; font-weight: 700; }
+  .check-label input { width: 16px; min-height: 16px; padding: 0; }
   .metric { padding: 16px; }
   .metric span { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }
   .metric strong { display: block; margin-top: 8px; font-size: 28px; line-height: 1; }
@@ -138,7 +141,7 @@ export default function App() {
   const [dateStart, setDateStart] = useState(today);
   const [dateEnd, setDateEnd] = useState(today);
   const [liveInterval, setLiveInterval] = useState(60000);
-  const [filters, setFilters] = useState({ league: "all", market: "all", minConfidence: 0, minOdd: 1, search: "" });
+  const [filters, setFilters] = useState({ league: "all", market: "all", minConfidence: 0, minOdd: 1, search: "", mostrarApenasAprovados: false });
   const [signals, setSignals] = useState([]);
   const [bankStatus, setBankStatus] = useState("Servidor conectado ao Firestore pela API.");
 

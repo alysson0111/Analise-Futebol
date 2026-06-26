@@ -18,19 +18,21 @@ export function getMarketLabel(market) {
 
 export function analisarMercado(jogo, mercadoSelecionado = "all") {
   const mercado = mercadoSelecionado !== "all" ? mercadoSelecionado : jogo.market;
-  const status = jogo.status || "Observar";
+  const statusOriginal = jogo.status || "Observar";
   const confianca = Number(jogo.confidence || 0);
   const odd = Number(jogo.odd || 0);
   const sinais = Array.isArray(jogo.stats) ? jogo.stats : [];
+  const entrada = statusOriginal === "Entrada";
 
   return {
     mercado,
     label: jogo.marketLabel || getMarketLabel(mercado),
-    status,
+    status: entrada ? "aprovado" : "observacao",
+    statusOriginal,
     confianca,
     odd,
     sinais,
-    entrada: status === "Entrada",
+    entrada,
     grade: jogo.grade || "",
     linhas: jogo.signals || []
   };

@@ -13,8 +13,13 @@ export function useGameAnalysis(games, filters) {
       };
     });
 
+    const mostrarApenasAprovados = Boolean(filters.mostrarApenasAprovados);
+    const jogosExibidos = mostrarApenasAprovados
+      ? jogosComAnalise.filter((jogo) => jogo.analise.status === "aprovado")
+      : jogosComAnalise;
+
     const leagues = [...new Set(jogosComAnalise.map((game) => game.league).filter(Boolean))].sort();
-    const filteredGames = jogosComAnalise.filter((game) => {
+    const filteredGames = jogosExibidos.filter((game) => {
       if (filters.league !== "all" && game.league !== filters.league) return false;
       if (selectedMarket !== "all" && game.market !== selectedMarket) return false;
       if (Number(game.analise.confianca || 0) < Number(filters.minConfidence || 0)) return false;

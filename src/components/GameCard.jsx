@@ -55,7 +55,7 @@ export default function GameCard({ games, updatedAt, onSave }) {
                     {!(game.analise?.sinais || game.stats || []).length && <span>Sem sinal pelo scanner</span>}
                   </div>
                 </td>
-                <td><AnalysisBadge status={game.analise?.status || game.status} /></td>
+                <td><AnalysisBadge status={game.analise?.statusOriginal || game.status} /></td>
                 <td>{(game.analise?.entrada || game.status === "Entrada") && <button className="btn" onClick={() => onSave(game)}>Salvar</button>}</td>
               </tr>
             ))}
