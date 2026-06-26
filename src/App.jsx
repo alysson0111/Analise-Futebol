@@ -92,15 +92,22 @@ const styles = `
   .games-table th:nth-child(6) { width: 5%; }
   .games-table th:nth-child(7) { width: 8%; }
   .games-table th:nth-child(8) { width: 7%; }
-  .games-table th:nth-child(9) { width: 20%; }
-  .games-table th:nth-child(10) { width: 7%; }
+  .games-table th:nth-child(9) { width: 19%; }
+  .games-table th:nth-child(10) { width: 8%; }
   .games-table th:nth-child(11) { width: 8%; }
   .games-table .btn { min-height: 30px; padding: 0 6px; font-size: 11px; }
-  .games-table .status { padding: 4px 5px; font-size: 10px; gap: 4px; }
-  .status { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 8px; background: #e9f7f0; color: var(--green-dark); font-weight: 800; font-size: 12px; }
+  .games-table td:nth-child(10) { overflow-wrap: normal; white-space: nowrap; }
+  .games-table .status { min-width: 72px; justify-content: center; padding: 4px 7px; font-size: 10px; gap: 4px; }
+  .status { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 8px; background: #e9f7f0; color: var(--green-dark); font-weight: 800; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
   .status.wait { background: #fff3de; color: #8a5207; }
   .dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
   .stats { display: grid; gap: 3px; min-width: 0; font-size: 11px; line-height: 1.2; color: var(--muted); }
+  .stat-line { border-left: 3px solid transparent; border-radius: 4px; padding: 2px 4px; background: #f7faf8; }
+  .stat-data { border-left-color: var(--blue); background: #edf6fc; color: #174f7a; }
+  .stat-ok { border-left-color: var(--green); background: #e9f7f0; color: var(--green-dark); }
+  .stat-fail { border-left-color: var(--red); background: #fdecec; color: var(--red); }
+  .stat-missing { border-left-color: var(--amber); background: #fff6e8; color: #8a5207; }
+  .stat-grade { border-left-color: #263238; background: #eef1f0; color: #263238; font-weight: 800; }
   .empty { padding: 28px; color: var(--muted); text-align: center; }
   .mini-stats { display: grid; grid-template-columns: repeat(4, minmax(90px, 1fr)); gap: 8px; }
   .mini-stat { background: #f7faf8; border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
