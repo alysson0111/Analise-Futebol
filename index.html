@@ -23,10 +23,13 @@
 
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--bg); color: var(--ink); }
+    html, body { width: 100%; overflow-x: hidden; }
     button, input, select { font: inherit; }
 
     .app {
       min-height: 100vh;
+      width: 100%;
+      max-width: 100vw;
       display: grid;
       grid-template-columns: 250px minmax(0, 1fr);
     }
@@ -116,6 +119,7 @@
 
     .main {
       min-width: 0;
+      max-width: 100vw;
       padding: 24px;
       display: grid;
       gap: 18px;
@@ -153,7 +157,8 @@
       align-items: center;
       justify-content: center;
       gap: 8px;
-      white-space: nowrap;
+      white-space: normal;
+      text-align: center;
     }
 
     .btn.primary { border-color: var(--green); background: var(--green); color: white; }
@@ -176,10 +181,11 @@
 
     .filters { grid-template-columns: repeat(5, minmax(130px, 1fr)); }
     .metrics { grid-template-columns: repeat(4, minmax(150px, 1fr)); }
-    .report-grid { grid-template-columns: 1fr 2fr; }
+    .report-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
 
     .panel,
     .metric {
+      min-width: 0;
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -209,7 +215,7 @@
     .metric span { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }
     .metric strong { display: block; margin-top: 8px; font-size: 28px; line-height: 1; }
 
-    .table-panel { overflow: hidden; }
+    .table-panel { overflow: hidden; min-width: 0; }
     .table-head {
       padding: 16px;
       border-bottom: 1px solid var(--line);
@@ -219,8 +225,15 @@
       gap: 12px;
     }
 
-    .table-wrap { overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; min-width: 980px; }
+    .table-wrap {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    table { width: 100%; border-collapse: collapse; min-width: 900px; }
     th, td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: left; font-size: 14px; }
     th { color: var(--muted); font-size: 12px; text-transform: uppercase; background: #f7faf8; }
     tr:last-child td { border-bottom: 0; }
@@ -239,7 +252,7 @@
 
     .status.wait { background: #fff3de; color: #8a5207; }
     .dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
-    .stats { display: grid; gap: 4px; min-width: 250px; font-size: 12px; line-height: 1.25; color: var(--muted); }
+    .stats { display: grid; gap: 4px; min-width: 220px; font-size: 12px; line-height: 1.25; color: var(--muted); }
     .empty { padding: 28px; color: var(--muted); text-align: center; }
 
     .mini-stats {
@@ -268,7 +281,23 @@
       .main { padding: 16px; }
       .topbar { grid-template-columns: 1fr; }
       .actions { justify-content: stretch; }
+      .actions .btn,
+      .report-actions .btn {
+        flex: 1 1 140px;
+        min-width: 0;
+      }
       .date-search, .filters, .metrics, .report-grid, .nav { grid-template-columns: 1fr; }
+      table { min-width: 760px; }
+      th, td { padding: 10px; font-size: 13px; }
+      .stats { min-width: 180px; }
+    }
+
+    @media (max-width: 420px) {
+      .sidebar { padding: 18px 12px; }
+      .main { padding: 12px; }
+      .brand { align-items: flex-start; }
+      .btn { padding: 0 10px; }
+      table { min-width: 680px; }
     }
   </style>
 </head>
