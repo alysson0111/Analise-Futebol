@@ -1,0 +1,10 @@
+node_modules/
+.git/
+.repo/
+.agents/
+.codex/
+work/
+.vercel/
+.env
+.env.local
+npm-debug.log*

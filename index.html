@@ -1,0 +1,924 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Analise de Apostas</title>
+  <style>
+    :root {
+      --bg: #f4f7f5;
+      --panel: #ffffff;
+      --panel-soft: #eef4ef;
+      --ink: #17211c;
+      --muted: #62726a;
+      --line: #dbe5df;
+      --green: #11875d;
+      --green-dark: #0a6245;
+      --amber: #c47b14;
+      --red: #b33b3b;
+      --blue: #2468a2;
+      --shadow: 0 16px 40px rgba(28, 45, 36, .10);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); }
+    button, input, select { font: inherit; }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 250px minmax(0, 1fr);
+    }
+
+    .sidebar {
+      background: #17211c;
+      color: #f7fff9;
+      padding: 24px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+
+    .brand {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding-bottom: 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, .12);
+    }
+
+    .brand-mark {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      background: #24b47e;
+      color: #06150f;
+      font-weight: 900;
+    }
+
+    .brand strong { display: block; line-height: 1.1; }
+    .brand span { color: #a9bcb2; font-size: 12px; }
+    .nav { display: grid; gap: 8px; }
+
+    .nav button {
+      min-height: 42px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: #cadbd1;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 12px;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .nav button.active,
+    .nav button:hover { background: rgba(255, 255, 255, .10); color: #fff; }
+
+    .nav button.has-signal {
+      color: #fff;
+      background: rgba(36, 180, 126, .18);
+      animation: signalPulse 1.15s ease-in-out infinite;
+    }
+
+    .signal-count {
+      margin-left: auto;
+      min-width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      display: inline-grid;
+      place-items: center;
+      background: #24b47e;
+      color: #06150f;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    @keyframes signalPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(36, 180, 126, .58); }
+      50% { box-shadow: 0 0 0 7px rgba(36, 180, 126, 0); }
+    }
+
+    .side-note {
+      background: rgba(255, 255, 255, .08);
+      border: 1px solid rgba(255, 255, 255, .10);
+      border-radius: 8px;
+      padding: 14px;
+      color: #cadbd1;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .main {
+      min-width: 0;
+      padding: 24px;
+      display: grid;
+      gap: 18px;
+      align-content: start;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 16px;
+      align-items: center;
+    }
+
+    h1 { margin: 0 0 4px; font-size: clamp(24px, 3vw, 34px); }
+    h2 { margin: 0; font-size: 18px; }
+    .subtitle { margin: 0; color: var(--muted); font-size: 14px; }
+
+    .actions,
+    .report-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .btn {
+      min-height: 40px;
+      border: 1px solid var(--line);
+      background: white;
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 0 14px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .btn.primary { border-color: var(--green); background: var(--green); color: white; }
+    .btn.green { border-color: var(--green); color: var(--green-dark); background: #e9f7f0; }
+    .btn.red { border-color: var(--red); color: var(--red); background: #fdecec; }
+    .btn:disabled { opacity: .65; cursor: wait; }
+
+    .filters,
+    .date-search,
+    .metrics,
+    .report-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .date-search {
+      grid-template-columns: repeat(4, minmax(150px, 1fr)) auto;
+      align-items: end;
+    }
+
+    .filters { grid-template-columns: repeat(5, minmax(130px, 1fr)); }
+    .metrics { grid-template-columns: repeat(4, minmax(150px, 1fr)); }
+    .report-grid { grid-template-columns: 1fr 2fr; }
+
+    .panel,
+    .metric {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .date-search,
+    .filters,
+    .report-box { padding: 14px; }
+
+    .field { display: grid; gap: 6px; }
+    .field label { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }
+
+    .field input,
+    .field select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink);
+      min-height: 40px;
+      padding: 0 10px;
+      outline: none;
+    }
+
+    .metric { padding: 16px; }
+    .metric span { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    .metric strong { display: block; margin-top: 8px; font-size: 28px; line-height: 1; }
+
+    .table-panel { overflow: hidden; }
+    .table-head {
+      padding: 16px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 980px; }
+    th, td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: left; font-size: 14px; }
+    th { color: var(--muted); font-size: 12px; text-transform: uppercase; background: #f7faf8; }
+    tr:last-child td { border-bottom: 0; }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 5px 8px;
+      background: #e9f7f0;
+      color: var(--green-dark);
+      font-weight: 800;
+      font-size: 12px;
+    }
+
+    .status.wait { background: #fff3de; color: #8a5207; }
+    .dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
+    .stats { display: grid; gap: 4px; min-width: 250px; font-size: 12px; line-height: 1.25; color: var(--muted); }
+    .empty { padding: 28px; color: var(--muted); text-align: center; }
+
+    .mini-stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(90px, 1fr));
+      gap: 8px;
+    }
+
+    .mini-stat {
+      background: #f7faf8;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+    }
+
+    .mini-stat span { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; font-weight: 800; }
+    .mini-stat strong { display: block; margin-top: 5px; font-size: 20px; }
+
+    @media (max-width: 1100px) {
+      .app { grid-template-columns: 1fr; }
+      .nav { grid-template-columns: repeat(3, 1fr); }
+      .date-search, .filters, .metrics, .report-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 720px) {
+      .main { padding: 16px; }
+      .topbar { grid-template-columns: 1fr; }
+      .actions { justify-content: stretch; }
+      .date-search, .filters, .metrics, .report-grid, .nav { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">A</div>
+        <div>
+          <strong>Analise Apostas</strong>
+          <span>pre-jogo e ao vivo</span>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="Mercados">
+        <button class="active" data-market-filter="all">Painel geral</button>
+        <button data-market-filter="over05">+0.5 gols</button>
+        <button data-market-filter="over25">+2.5 gols</button>
+        <button data-market-filter="under25">Under 2.5</button>
+        <button data-market-filter="corners">Escanteios</button>
+      </nav>
+
+      <div class="side-note">
+        Integracao protegida no servidor. Tokens, Firebase e regras internas nao ficam expostos na pagina.
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="topbar">
+        <div>
+          <h1>Radar de oportunidades</h1>
+          <p class="subtitle">Jogos analisados pelos scanners internos do sistema.</p>
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="ongoingBtn">Jogos em Andamento</button>
+          <button class="btn primary" id="scanBtn">Atualizar analise</button>
+          <button class="btn primary" id="liveBtn">Ao vivo</button>
+          <button class="btn" id="stopLiveBtn" disabled>Parar ao vivo</button>
+        </div>
+      </section>
+
+      <section class="date-search panel" aria-label="Busca por periodo">
+        <div class="field">
+          <label for="dateStart">Data inicial</label>
+          <input id="dateStart" type="date">
+        </div>
+        <div class="field">
+          <label for="dateEnd">Data final</label>
+          <input id="dateEnd" type="date">
+        </div>
+        <div class="field">
+          <label for="sourceInfo">Fonte</label>
+          <input id="sourceInfo" value="Servidor seguro" readonly>
+        </div>
+        <div class="field">
+          <label for="liveInterval">Ao vivo</label>
+          <select id="liveInterval">
+            <option value="30000">30 segundos</option>
+            <option value="60000" selected>60 segundos</option>
+            <option value="120000">2 minutos</option>
+          </select>
+        </div>
+        <button class="btn primary" id="dateSearchBtn">Buscar periodo</button>
+      </section>
+
+      <section class="filters panel" aria-label="Filtros">
+        <div class="field">
+          <label for="leagueFilter">Liga</label>
+          <select id="leagueFilter"><option value="all">Todas</option></select>
+        </div>
+        <div class="field">
+          <label for="marketFilter">Mercado</label>
+          <select id="marketFilter">
+            <option value="all">Todos</option>
+            <option value="over05">+0.5 gols</option>
+            <option value="over25">+2.5 gols</option>
+            <option value="under25">Under 2.5</option>
+            <option value="corners">Escanteios</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="minConfidence">Confianca minima</label>
+          <input id="minConfidence" type="number" min="0" max="100" value="0">
+        </div>
+        <div class="field">
+          <label for="minOdd">Odd minima</label>
+          <input id="minOdd" type="number" min="1" step="0.01" value="1.00">
+        </div>
+        <div class="field">
+          <label for="search">Buscar jogo</label>
+          <input id="search" placeholder="Time ou liga">
+        </div>
+      </section>
+
+      <section class="metrics" aria-label="Resumo">
+        <div class="metric"><span>Jogos analisados</span><strong id="gamesMetric">0</strong></div>
+        <div class="metric"><span>Entradas fortes</span><strong id="strongMetric">0</strong></div>
+        <div class="metric"><span>Odd media</span><strong id="oddMetric">0.00</strong></div>
+        <div class="metric"><span>Confianca media</span><strong id="confidenceMetric">0%</strong></div>
+      </section>
+
+      <section class="table-panel panel">
+        <div class="table-head">
+          <h2>Lista de jogos</h2>
+          <span class="subtitle" id="updatedAt">Aguardando analise</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Jogo</th>
+                <th>Liga</th>
+                <th>Tempo</th>
+                <th>Placar</th>
+                <th>Mercado</th>
+                <th>Odd</th>
+                <th>Data</th>
+                <th>Confianca</th>
+                <th>Sinais</th>
+                <th>Status</th>
+                <th>Registro</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="report-grid">
+        <div class="report-box panel">
+          <h2>Banco de sinais</h2>
+          <p class="subtitle" id="bankStatus">Servidor conectado ao Firestore pela API.</p>
+          <div class="report-actions">
+            <button class="btn primary" id="saveSignalsBtn">Salvar sinais atuais</button>
+            <button class="btn" id="refreshReportBtn">Atualizar relatorio</button>
+            <button class="btn" id="exportCsvBtn">Excel CSV</button>
+            <button class="btn" id="exportPdfBtn">PDF</button>
+          </div>
+        </div>
+        <div class="report-box panel">
+          <h2>Relatorio de sinais</h2>
+          <div class="mini-stats">
+            <div class="mini-stat"><span>Total</span><strong id="reportTotal">0</strong></div>
+            <div class="mini-stat"><span>Green</span><strong id="reportGreen">0</strong></div>
+            <div class="mini-stat"><span>Red</span><strong id="reportRed">0</strong></div>
+            <div class="mini-stat"><span>Assertividade</span><strong id="reportHitRate">0%</strong></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data/Hora</th>
+                  <th>Jogo</th>
+                  <th>Mercado</th>
+                  <th>Odd</th>
+                  <th>Resultado</th>
+                </tr>
+              </thead>
+              <tbody id="reportBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const marketLabels = {
+      over05: "+0.5 gols",
+      over25: "+2.5 gols",
+      under25: "Under 2.5",
+      corners: "Escanteios"
+    };
+
+    const els = {
+      tableBody: document.querySelector("#tableBody"),
+      reportBody: document.querySelector("#reportBody"),
+      gamesMetric: document.querySelector("#gamesMetric"),
+      strongMetric: document.querySelector("#strongMetric"),
+      oddMetric: document.querySelector("#oddMetric"),
+      confidenceMetric: document.querySelector("#confidenceMetric"),
+      updatedAt: document.querySelector("#updatedAt"),
+      bankStatus: document.querySelector("#bankStatus"),
+      dateStart: document.querySelector("#dateStart"),
+      dateEnd: document.querySelector("#dateEnd"),
+      liveInterval: document.querySelector("#liveInterval"),
+      leagueFilter: document.querySelector("#leagueFilter"),
+      marketFilter: document.querySelector("#marketFilter"),
+      minConfidence: document.querySelector("#minConfidence"),
+      minOdd: document.querySelector("#minOdd"),
+      search: document.querySelector("#search"),
+      ongoingBtn: document.querySelector("#ongoingBtn"),
+      scanBtn: document.querySelector("#scanBtn"),
+      liveBtn: document.querySelector("#liveBtn"),
+      stopLiveBtn: document.querySelector("#stopLiveBtn"),
+      dateSearchBtn: document.querySelector("#dateSearchBtn"),
+      saveSignalsBtn: document.querySelector("#saveSignalsBtn"),
+      refreshReportBtn: document.querySelector("#refreshReportBtn"),
+      exportCsvBtn: document.querySelector("#exportCsvBtn"),
+      exportPdfBtn: document.querySelector("#exportPdfBtn"),
+      reportTotal: document.querySelector("#reportTotal"),
+      reportGreen: document.querySelector("#reportGreen"),
+      reportRed: document.querySelector("#reportRed"),
+      reportHitRate: document.querySelector("#reportHitRate")
+    };
+
+    let games = [];
+    let savedSignals = [];
+    let currentSidebarMarket = "all";
+    let liveTimer = null;
+
+    function todayInput() {
+      const now = new Date();
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const day = String(now.getDate()).padStart(2, "0");
+      return `${now.getFullYear()}-${month}-${day}`;
+    }
+
+    function currencyOdd(value) {
+      return Number(value || 0).toFixed(2);
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function getFilteredGames() {
+      const league = els.leagueFilter.value;
+      const market = currentSidebarMarket !== "all" ? currentSidebarMarket : els.marketFilter.value;
+      const confidence = Number(els.minConfidence.value || 0);
+      const odd = Number(els.minOdd.value || 1);
+      const search = els.search.value.trim().toLowerCase();
+
+      return games.filter((game) => {
+        if (league !== "all" && game.league !== league) return false;
+        if (market !== "all" && game.market !== market) return false;
+        if (Number(game.confidence || 0) < confidence) return false;
+        if (Number(game.odd || 0) < odd) return false;
+        if (search && !`${game.home} ${game.away} ${game.league}`.toLowerCase().includes(search)) return false;
+        return true;
+      });
+    }
+
+    function populateLeagues() {
+      const selected = els.leagueFilter.value;
+      const leagues = [...new Set(games.map((game) => game.league).filter(Boolean))].sort();
+      els.leagueFilter.innerHTML = `<option value="all">Todas</option>` + leagues.map((league) => (
+        `<option value="${escapeHtml(league)}">${escapeHtml(league)}</option>`
+      )).join("");
+      els.leagueFilter.value = leagues.includes(selected) ? selected : "all";
+    }
+
+    function renderMetrics(filtered) {
+      const entries = filtered.filter((game) => game.status === "Entrada");
+      const oddAvg = entries.length ? entries.reduce((sum, game) => sum + Number(game.odd || 0), 0) / entries.length : 0;
+      const confidenceAvg = entries.length ? entries.reduce((sum, game) => sum + Number(game.confidence || 0), 0) / entries.length : 0;
+      els.gamesMetric.textContent = filtered.length;
+      els.strongMetric.textContent = entries.length;
+      els.oddMetric.textContent = currencyOdd(oddAvg);
+      els.confidenceMetric.textContent = `${Math.round(confidenceAvg)}%`;
+    }
+
+    function renderMarketAlerts() {
+      const counts = games.reduce((acc, game) => {
+        if (game.status === "Entrada") acc[game.market] = (acc[game.market] || 0) + 1;
+        return acc;
+      }, {});
+
+      document.querySelectorAll("[data-market-filter]").forEach((button) => {
+        const market = button.dataset.marketFilter;
+        const count = market === "all"
+          ? Object.values(counts).reduce((sum, value) => sum + value, 0)
+          : counts[market] || 0;
+        button.classList.toggle("has-signal", count > 0);
+        const old = button.querySelector(".signal-count");
+        if (old) old.remove();
+        if (count > 0) {
+          const badge = document.createElement("span");
+          badge.className = "signal-count";
+          badge.textContent = count;
+          button.appendChild(badge);
+        }
+      });
+    }
+
+    function renderTable(filtered) {
+      if (!filtered.length) {
+        els.tableBody.innerHTML = `<tr><td colspan="11" class="empty">Nenhum jogo encontrado.</td></tr>`;
+        return;
+      }
+
+      els.tableBody.innerHTML = filtered.map((game) => {
+        const statusClass = game.status === "Entrada" ? "status" : "status wait";
+        const saveButton = game.status === "Entrada"
+          ? `<button class="btn" data-save-signal="${escapeHtml(game.key)}">Salvar</button>`
+          : "";
+        const stats = (game.stats || []).slice(0, 8).map((entry) => `<span>${escapeHtml(entry)}</span>`).join("");
+        return `
+          <tr>
+            <td><strong>${escapeHtml(game.home)} x ${escapeHtml(game.away)}</strong></td>
+            <td>${escapeHtml(game.league)}</td>
+            <td>${escapeHtml(game.liveStatus || game.time || "-")}</td>
+            <td>${escapeHtml(game.scoreText || "-")}</td>
+            <td>${escapeHtml(game.marketLabel || marketLabels[game.market] || game.market)}</td>
+            <td>${currencyOdd(game.odd)}</td>
+            <td>${escapeHtml(game.dateText || "-")}</td>
+            <td>${Math.round(Number(game.confidence || 0))}%</td>
+            <td><div class="stats">${stats || "<span>Sem sinal pelo scanner</span>"}</div></td>
+            <td><span class="${statusClass}"><span class="dot"></span>${escapeHtml(game.status)}</span></td>
+            <td>${saveButton}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function renderReport() {
+      const green = savedSignals.filter((signal) => signal.result === "green").length;
+      const red = savedSignals.filter((signal) => signal.result === "red").length;
+      const done = green + red;
+      els.reportTotal.textContent = savedSignals.length;
+      els.reportGreen.textContent = green;
+      els.reportRed.textContent = red;
+      els.reportHitRate.textContent = done ? `${Math.round((green / done) * 100)}%` : "0%";
+
+      if (!savedSignals.length) {
+        els.reportBody.innerHTML = `<tr><td colspan="5" class="empty">Nenhum sinal salvo.</td></tr>`;
+        return;
+      }
+
+      els.reportBody.innerHTML = savedSignals.map((signal) => `
+        <tr>
+          <td>${escapeHtml(signal.createdAtText || "-")}</td>
+          <td>${escapeHtml(signal.home)} x ${escapeHtml(signal.away)}</td>
+          <td>${escapeHtml(signal.marketLabel || signal.market)}</td>
+          <td>${currencyOdd(signal.odd)}</td>
+          <td>
+            <button class="btn green" data-result-id="${escapeHtml(signal.id)}" data-result="green">Green</button>
+            <button class="btn red" data-result-id="${escapeHtml(signal.id)}" data-result="red">Red</button>
+            <span>${escapeHtml(signal.result || "pendente")}</span>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    function render() {
+      populateLeagues();
+      const filtered = getFilteredGames();
+      renderMetrics(filtered);
+      renderTable(filtered);
+      renderMarketAlerts();
+      renderReport();
+    }
+
+    async function apiJson(url, options = {}) {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers || {})
+        }
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `Erro ${response.status}`);
+      return payload;
+    }
+
+    async function fetchGames(mode) {
+      const url = mode === "live"
+        ? "/api/games?mode=live"
+        : `/api/games?start=${encodeURIComponent(els.dateStart.value)}&end=${encodeURIComponent(els.dateEnd.value)}`;
+      const payload = await apiJson(url);
+      games = payload.games || [];
+      render();
+      const label = mode === "live" ? "jogo(s) em andamento" : "jogo(s) recebido(s)";
+      els.updatedAt.textContent = `Atualizado as ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} - ${payload.count || games.length} ${label}`;
+    }
+
+    function stopLiveMode() {
+      if (liveTimer) {
+        window.clearInterval(liveTimer);
+        liveTimer = null;
+      }
+      els.liveBtn.disabled = false;
+      els.stopLiveBtn.disabled = true;
+      els.liveBtn.textContent = "Ao vivo";
+    }
+
+    async function startLiveMode() {
+      stopLiveMode();
+      els.liveBtn.disabled = true;
+      els.stopLiveBtn.disabled = false;
+      els.liveBtn.textContent = "Ao vivo ativo";
+      await fetchGames("live");
+      liveTimer = window.setInterval(async () => {
+        try {
+          await fetchGames("live");
+        } catch (error) {
+          stopLiveMode();
+          els.updatedAt.textContent = `Erro ao vivo: ${error.message}`;
+        }
+      }, Number(els.liveInterval.value || 60000));
+    }
+
+    function findGame(key) {
+      return games.find((game) => game.key === key);
+    }
+
+    async function saveSignal(game) {
+      const saved = await apiJson("/api/signals", {
+        method: "POST",
+        body: JSON.stringify(game)
+      });
+      savedSignals.unshift(saved);
+      els.bankStatus.textContent = "Sinal salvo no Firestore.";
+      renderReport();
+    }
+
+    async function saveCurrentSignals() {
+      const entries = getFilteredGames().filter((game) => game.status === "Entrada");
+      for (const game of entries) {
+        await saveSignal(game);
+      }
+      els.bankStatus.textContent = `${entries.length} sinal(is) salvo(s).`;
+    }
+
+    async function loadSignals() {
+      const payload = await apiJson("/api/signals");
+      savedSignals = payload.signals || [];
+      els.bankStatus.textContent = "Relatorio atualizado pelo Firestore.";
+      renderReport();
+    }
+
+    async function updateSignalResult(id, result) {
+      await apiJson("/api/signals", {
+        method: "PATCH",
+        body: JSON.stringify({ id, result })
+      });
+      const signal = savedSignals.find((item) => item.id === id);
+      if (signal) signal.result = result;
+      renderReport();
+    }
+
+    function exportSignalsCsv() {
+      const header = ["data_hora", "jogo", "liga", "mercado", "odd", "confianca", "resultado", "scanner"];
+      const rows = savedSignals.map((signal) => [
+        signal.createdAtText || "",
+        `${signal.home} x ${signal.away}`,
+        signal.league || "",
+        signal.marketLabel || signal.market || "",
+        signal.odd || "",
+        signal.confidence || "",
+        signal.result || "pendente",
+        (signal.stats || []).join(" | ")
+      ]);
+      const csv = [header, ...rows].map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(";")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `relatorio-sinais-${todayInput()}.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    }
+
+    function exportSignalsPdf() {
+      const win = window.open("", "_blank");
+      if (!win) return;
+      const rows = savedSignals.map((signal) => `
+        <tr>
+          <td>${escapeHtml(signal.createdAtText || "-")}</td>
+          <td>${escapeHtml(signal.home)} x ${escapeHtml(signal.away)}</td>
+          <td>${escapeHtml(signal.marketLabel || signal.market)}</td>
+          <td>${currencyOdd(signal.odd)}</td>
+          <td>${escapeHtml(signal.result || "pendente")}</td>
+        </tr>
+      `).join("");
+      win.document.write(`
+        <!doctype html>
+        <html lang="pt-BR">
+          <head>
+            <meta charset="utf-8">
+            <title>Relatorio de sinais</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 24px; color: #17211c; }
+              table { width: 100%; border-collapse: collapse; }
+              th, td { border: 1px solid #dbe5df; padding: 8px; text-align: left; font-size: 12px; }
+              th { background: #eef4ef; }
+            </style>
+          </head>
+          <body>
+            <h1>Relatorio de sinais</h1>
+            <table>
+              <thead><tr><th>Data/Hora</th><th>Jogo</th><th>Mercado</th><th>Odd</th><th>Resultado</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </body>
+        </html>
+      `);
+      win.document.close();
+      win.focus();
+      win.print();
+    }
+
+    document.querySelectorAll("[data-market-filter]").forEach((button) => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll("[data-market-filter]").forEach((item) => item.classList.remove("active"));
+        button.classList.add("active");
+        currentSidebarMarket = button.dataset.marketFilter;
+        if (currentSidebarMarket !== "all") els.marketFilter.value = currentSidebarMarket;
+        render();
+      });
+    });
+
+    [els.leagueFilter, els.marketFilter, els.minConfidence, els.minOdd, els.search].forEach((el) => {
+      el.addEventListener("input", () => {
+        if (el === els.marketFilter) {
+          currentSidebarMarket = "all";
+          document.querySelectorAll("[data-market-filter]").forEach((item) => {
+            item.classList.toggle("active", item.dataset.marketFilter === "all");
+          });
+        }
+        render();
+      });
+    });
+
+    els.ongoingBtn.addEventListener("click", async () => {
+      stopLiveMode();
+      els.ongoingBtn.disabled = true;
+      els.ongoingBtn.textContent = "Buscando...";
+      try {
+        await fetchGames("live");
+      } catch (error) {
+        games = [];
+        render();
+        els.updatedAt.textContent = `Erro jogos em andamento: ${error.message}`;
+      } finally {
+        els.ongoingBtn.disabled = false;
+        els.ongoingBtn.textContent = "Jogos em Andamento";
+      }
+    });
+
+    els.dateSearchBtn.addEventListener("click", async () => {
+      stopLiveMode();
+      els.dateSearchBtn.disabled = true;
+      els.dateSearchBtn.textContent = "Buscando...";
+      try {
+        await fetchGames("period");
+      } catch (error) {
+        games = [];
+        render();
+        els.updatedAt.textContent = `Erro: ${error.message}`;
+      } finally {
+        els.dateSearchBtn.disabled = false;
+        els.dateSearchBtn.textContent = "Buscar periodo";
+      }
+    });
+
+    els.scanBtn.addEventListener("click", async () => {
+      stopLiveMode();
+      els.scanBtn.disabled = true;
+      els.scanBtn.textContent = "Analisando...";
+      try {
+        await fetchGames("period");
+      } catch (error) {
+        games = [];
+        render();
+        els.updatedAt.textContent = `Erro: ${error.message}`;
+      } finally {
+        els.scanBtn.disabled = false;
+        els.scanBtn.textContent = "Atualizar analise";
+      }
+    });
+
+    els.liveBtn.addEventListener("click", async () => {
+      try {
+        await startLiveMode();
+      } catch (error) {
+        stopLiveMode();
+        games = [];
+        render();
+        els.updatedAt.textContent = `Erro ao vivo: ${error.message}`;
+      }
+    });
+
+    els.stopLiveBtn.addEventListener("click", () => {
+      stopLiveMode();
+      els.updatedAt.textContent = `Ao vivo parado as ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+    });
+
+    els.tableBody.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-save-signal]");
+      if (!button) return;
+      const game = findGame(button.dataset.saveSignal);
+      if (!game) return;
+      button.disabled = true;
+      button.textContent = "Salvando...";
+      try {
+        await saveSignal(game);
+        button.textContent = "Salvo";
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = "Salvar";
+        els.bankStatus.textContent = `Erro ao salvar: ${error.message}`;
+      }
+    });
+
+    els.reportBody.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-result-id]");
+      if (!button) return;
+      try {
+        await updateSignalResult(button.dataset.resultId, button.dataset.result);
+      } catch (error) {
+        els.bankStatus.textContent = `Erro ao atualizar: ${error.message}`;
+      }
+    });
+
+    els.saveSignalsBtn.addEventListener("click", async () => {
+      els.saveSignalsBtn.disabled = true;
+      els.saveSignalsBtn.textContent = "Salvando...";
+      try {
+        await saveCurrentSignals();
+      } catch (error) {
+        els.bankStatus.textContent = `Erro ao salvar: ${error.message}`;
+      } finally {
+        els.saveSignalsBtn.disabled = false;
+        els.saveSignalsBtn.textContent = "Salvar sinais atuais";
+      }
+    });
+
+    els.refreshReportBtn.addEventListener("click", async () => {
+      try {
+        await loadSignals();
+      } catch (error) {
+        els.bankStatus.textContent = `Erro relatorio: ${error.message}`;
+      }
+    });
+
+    els.exportCsvBtn.addEventListener("click", exportSignalsCsv);
+    els.exportPdfBtn.addEventListener("click", exportSignalsPdf);
+
+    els.dateStart.value = todayInput();
+    els.dateEnd.value = todayInput();
+    render();
+    loadSignals().catch((error) => {
+      els.bankStatus.textContent = `Configure Firebase no servidor: ${error.message}`;
+    });
+  </script>
+</body>
+</html>
