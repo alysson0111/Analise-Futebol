@@ -1,5 +1,9 @@
 import { getDb, now } from "./_lib/firebase.js";
 
+const API_FIXTURES = "https://v3.football.api-sports.io/fixtures";
+const API_STATISTICS = "https://v3.football.api-sports.io/fixtures/statistics";
+const FINISHED_STATUSES = new Set(["FT", "AET", "PEN"]);
+
 function send(res, status, body) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -39,11 +43,141 @@ function cleanSignal(input) {
   };
 }
 
+function normalizeMarketName(value) {
+  return String(value || "").toLowerCase().replace(/\s+/g, "");
+}
+
+function parseScoreTotal(scoreText) {
+  const parts = String(scoreText || "").split("x").map((part) => Number(part.trim()));
+  return parts.length === 2 && parts.every(Number.isFinite) ? parts[0] + parts[1] : 0;
+}
+
+function getStatTotal(stats, type) {
+  return (stats || []).reduce((sum, teamStats) => {
+    const item = (teamStats.statistics || []).find((stat) => stat.type === type);
+    return sum + Number(item?.value || 0);
+  }, 0);
+}
+
+function getSignalSettlement(signal, game) {
+  const market = normalizeMarketName(signal.market || signal.marketLabel);
+  const totalGoals = Number.isFinite(Number(game.totalGoals)) ? Number(game.totalGoals) : parseScoreTotal(game.scoreText);
+  const finished = FINISHED_STATUSES.has(String(game.apiStatus || "").toUpperCase());
+  const corners = Number(game.liveCorners || 0);
+
+  if (market.includes("over05") || market.includes("+0.5")) {
+    if (totalGoals >= 1) return "green";
+    return finished ? "red" : "";
+  }
+
+  if (market.includes("over15") || market.includes("+1.5")) {
+    if (totalGoals >= 2) return "green";
+    return finished ? "red" : "";
+  }
+
+  if (market.includes("over25") || market.includes("+2.5")) {
+    if (totalGoals >= 3) return "green";
+    return finished ? "red" : "";
+  }
+
+  if (market.includes("under25") || market.includes("under2.5")) {
+    if (totalGoals >= 3) return "red";
+    return finished ? "green" : "";
+  }
+
+  if (market.includes("corner") || market.includes("escanteio")) {
+    if (corners >= 9) return "green";
+    return finished ? "red" : "";
+  }
+
+  return "";
+}
+
+async function fetchFixtureState(sourceId, token) {
+  const response = await fetch(`${API_FIXTURES}?id=${encodeURIComponent(sourceId)}`, {
+    headers: { "x-apisports-key": token }
+  });
+  if (!response.ok) return null;
+
+  const payload = await response.json();
+  const row = payload.response?.[0];
+  if (!row) return null;
+
+  let stats = [];
+  try {
+    const statsResponse = await fetch(`${API_STATISTICS}?fixture=${encodeURIComponent(sourceId)}`, {
+      headers: { "x-apisports-key": token }
+    });
+    if (statsResponse.ok) {
+      const statsPayload = await statsResponse.json();
+      stats = statsPayload.response || [];
+    }
+  } catch {
+    stats = [];
+  }
+
+  const homeGoals = Number(row.goals?.home || 0);
+  const awayGoals = Number(row.goals?.away || 0);
+  const elapsed = Number(row.fixture?.status?.elapsed || 0);
+  const apiStatus = String(row.fixture?.status?.short || "");
+  const kickoff = row.fixture?.date ? new Date(row.fixture.date) : null;
+
+  return {
+    scoreText: `${homeGoals}x${awayGoals}`,
+    totalGoals: homeGoals + awayGoals,
+    liveStatus: elapsed ? `${elapsed}'` : apiStatus,
+    apiStatus,
+    liveCorners: getStatTotal(stats, "Corner Kicks"),
+    dateText: kickoff && !Number.isNaN(kickoff.getTime()) ? kickoff.toLocaleDateString("pt-BR") : ""
+  };
+}
+
+async function settleSignalsFromApi(db, signals) {
+  const token = process.env.API_FOOTBALL_KEY;
+  if (!token) return signals;
+
+  const pending = signals.filter((signal) => {
+    return signal.id && signal.result === "pendente" && /^\d+$/.test(String(signal.sourceId || ""));
+  }).slice(0, 40);
+
+  if (!pending.length) return signals;
+
+  const updates = new Map();
+  for (const signal of pending) {
+    try {
+      const game = await fetchFixtureState(signal.sourceId, token);
+      if (!game) continue;
+
+      const result = getSignalSettlement(signal, game);
+      if (!result) {
+        updates.set(signal.id, { ...signal, ...game });
+        continue;
+      }
+
+      const update = {
+        result,
+        scoreText: game.scoreText,
+        liveStatus: game.liveStatus,
+        dateText: game.dateText || signal.dateText || "",
+        settledAtText: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
+        updatedAt: now()
+      };
+      await db.collection("sinais").doc(String(signal.id)).update(update);
+      updates.set(signal.id, { ...signal, ...update });
+    } catch {
+      continue;
+    }
+  }
+
+  return signals.map((signal) => updates.get(signal.id) || signal);
+}
+
 async function listSignals(res) {
   const db = getDb();
   const snapshot = await db.collection("sinais").orderBy("createdAt", "desc").limit(300).get();
   const signals = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  send(res, 200, { signals });
+  const settledSignals = await settleSignalsFromApi(db, signals);
+  send(res, 200, { signals: settledSignals });
 }
 
 async function saveSignal(req, res) {

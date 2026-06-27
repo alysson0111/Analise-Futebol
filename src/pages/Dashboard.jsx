@@ -66,6 +66,7 @@ export function SearchBar({ dateStart, setDateStart, dateEnd, setDateEnd, liveIn
 
 export function SignalsReport({ signals, bankStatus, changeSignalResult, removeSignal }) {
   const report = calculateReport(signals);
+  const resultLabel = { green: "Green", red: "Red", pendente: "Pendente" };
 
   function exportCsv() {
     const header = ["data_hora", "jogo", "liga", "resultado_final", "mercado", "odd", "confianca", "resultado", "scanner"];
@@ -178,11 +179,13 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
                   <td>{currencyOdd(signal.odd)}</td>
                   <td>{Math.round(Number(signal.confidence || 0))}%</td>
                   <td>
+                    <span className={`result-pill ${signal.result === "green" ? "green" : signal.result === "red" ? "red" : "pending"}`}>
+                      {resultLabel[signal.result] || "Pendente"}
+                    </span>
+                  </td>
+                  <td className="report-actions-cell">
                     <button className="btn green" onClick={() => changeSignalResult(signal.id, "green")}>Green</button>
                     <button className="btn red" onClick={() => changeSignalResult(signal.id, "red")}>Red</button>
-                    <span>{signal.result || "pendente"}</span>
-                  </td>
-                  <td>
                     <button className="btn red" onClick={() => removeSignal(signal.id)}>Excluir</button>
                   </td>
                 </tr>
