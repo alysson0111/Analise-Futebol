@@ -58,11 +58,13 @@ const styles = `
 
   .panel, .metric { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
   .date-search, .filters, .report-box { padding: 14px; }
-  .date-search, .filters, .metrics, .report-grid { display: grid; gap: 12px; }
+  .date-search, .filters, .metrics { display: grid; gap: 12px; }
+  .report-grid { display: block; min-width: 0; }
   .date-search { grid-template-columns: repeat(4, minmax(150px, 1fr)) auto; align-items: end; }
   .filters { grid-template-columns: repeat(6, minmax(120px, 1fr)); }
   .metrics { grid-template-columns: repeat(4, minmax(150px, 1fr)); }
-  .report-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
+  .report-box { display: grid; gap: 12px; }
+  .report-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   .field { display: grid; gap: 6px; }
   .field label { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }
   .field input, .field select { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); min-height: 40px; padding: 0 10px; outline: none; }
@@ -116,7 +118,7 @@ const styles = `
   @media (max-width: 1100px) {
     .app { grid-template-columns: 1fr; }
     .nav { grid-template-columns: repeat(3, 1fr); }
-    .date-search, .filters, .metrics, .report-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .date-search, .filters, .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
 
   @media (max-width: 720px) {
@@ -124,7 +126,7 @@ const styles = `
     .topbar { grid-template-columns: 1fr; }
     .actions { justify-content: stretch; }
     .actions .btn, .report-actions .btn { flex: 1 1 140px; min-width: 0; }
-    .date-search, .filters, .metrics, .report-grid, .nav { grid-template-columns: 1fr; }
+    .date-search, .filters, .metrics, .nav { grid-template-columns: 1fr; }
     th, td { padding: 10px; font-size: 13px; }
     .games-table th, .games-table td { padding: 6px 4px; font-size: 11px; }
     .games-table th { font-size: 9px; }

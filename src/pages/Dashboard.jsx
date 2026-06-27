@@ -95,6 +95,7 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
       <tr>
         <td>${signal.createdAtText || "-"}</td>
         <td>${signal.home} x ${signal.away}</td>
+        <td>${signal.league || "-"}</td>
         <td>${signal.marketLabel || signal.market}</td>
         <td>${currencyOdd(signal.odd)}</td>
         <td>${signal.result || "pendente"}</td>
@@ -116,7 +117,7 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
         <body>
           <h1>Relatorio de sinais</h1>
           <table>
-            <thead><tr><th>Data/Hora</th><th>Jogo</th><th>Mercado</th><th>Odd</th><th>Resultado</th></tr></thead>
+            <thead><tr><th>Data/Hora</th><th>Jogo</th><th>Liga</th><th>Mercado</th><th>Odd</th><th>Resultado</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </body>
@@ -130,15 +131,16 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
   return (
     <section className="report-grid">
       <div className="report-box panel">
-        <h2>Banco de sinais</h2>
-        <p className="subtitle">{bankStatus}</p>
-        <div className="report-actions">
-          <button className="btn" onClick={exportCsv}>Excel CSV</button>
-          <button className="btn" onClick={exportPdf}>PDF</button>
+        <div className="report-head">
+          <div>
+            <h2>Relatorio de sinais</h2>
+            <p className="subtitle">{bankStatus}</p>
+          </div>
+          <div className="report-actions">
+            <button className="btn" onClick={exportCsv}>Excel CSV</button>
+            <button className="btn" onClick={exportPdf}>PDF</button>
+          </div>
         </div>
-      </div>
-      <div className="report-box panel">
-        <h2>Relatorio de sinais</h2>
         <div className="mini-stats">
           <div className="mini-stat"><span>Total</span><strong>{report.total}</strong></div>
           <div className="mini-stat"><span>Green</span><strong>{report.green}</strong></div>
@@ -152,18 +154,20 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
               <tr>
                 <th>Data/Hora</th>
                 <th>Jogo</th>
+                <th>Liga</th>
                 <th>Mercado</th>
                 <th>Odd</th>
                 <th>Resultado</th>
-                <th>Ação</th>
+                <th>Acao</th>
               </tr>
             </thead>
             <tbody>
-              {!signals.length && <tr><td colSpan="6" className="empty">Nenhum sinal salvo.</td></tr>}
+              {!signals.length && <tr><td colSpan="7" className="empty">Nenhum sinal salvo.</td></tr>}
               {signals.map((signal) => (
                 <tr key={signal.id}>
                   <td>{signal.createdAtText || "-"}</td>
                   <td>{signal.home} x {signal.away}</td>
+                  <td>{signal.league || "-"}</td>
                   <td>{signal.marketLabel || signal.market}</td>
                   <td>{currencyOdd(signal.odd)}</td>
                   <td>
