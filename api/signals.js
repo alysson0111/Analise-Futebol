@@ -56,13 +56,17 @@ async function saveSignal(req, res) {
   const existing = await db.collection("sinais").where("key", "==", record.key).limit(1).get();
   if (!existing.empty) {
     const doc = existing.docs[0];
-    await doc.ref.update({
+    const previous = doc.data();
+    const merged = {
       ...record,
-      result: doc.data().result || record.result,
-      createdAtText: doc.data().createdAtText || record.createdAtText,
+      result: previous.result || record.result,
+      createdAtText: previous.createdAtText || record.createdAtText
+    };
+    await doc.ref.update({
+      ...merged,
       updatedAt: now()
     });
-    return send(res, 200, { id: doc.id, ...doc.data(), ...record, duplicate: true });
+    return send(res, 200, { id: doc.id, ...previous, ...merged, duplicate: true });
   }
 
   const doc = await db.collection("sinais").add({
@@ -83,6 +87,7 @@ async function updateResult(req, res) {
 
   await db.collection("sinais").doc(String(id)).update({
     result,
+    settledAtText: result === "pendente" ? "" : new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
     updatedAt: now()
   });
 

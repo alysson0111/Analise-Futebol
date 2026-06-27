@@ -142,6 +142,63 @@ const styles = `
   }
 `;
 
+const FINISHED_STATUSES = new Set(["FT", "AET", "PEN"]);
+
+function parseScoreTotal(scoreText) {
+  const parts = String(scoreText || "").split("x").map((part) => Number(part.trim()));
+  return parts.length === 2 && parts.every(Number.isFinite) ? parts[0] + parts[1] : 0;
+}
+
+function getGameTotalGoals(game) {
+  const total = Number(game?.totalGoals);
+  return Number.isFinite(total) ? total : parseScoreTotal(game?.scoreText);
+}
+
+function isFinishedGame(game) {
+  const status = String(game?.apiStatus || "").toUpperCase();
+  return FINISHED_STATUSES.has(status);
+}
+
+function normalizeMarketName(value) {
+  return String(value || "").toLowerCase().replace(/\s+/g, "");
+}
+
+function getSignalSettlement(signal, game) {
+  if (!game) return "";
+
+  const market = normalizeMarketName(signal.market || signal.marketLabel);
+  const totalGoals = getGameTotalGoals(game);
+  const finished = isFinishedGame(game);
+  const corners = Number(game.liveCorners || 0);
+
+  if (market.includes("over05") || market.includes("+0.5")) {
+    if (totalGoals >= 1) return "green";
+    return finished ? "red" : "";
+  }
+
+  if (market.includes("over15") || market.includes("+1.5")) {
+    if (totalGoals >= 2) return "green";
+    return finished ? "red" : "";
+  }
+
+  if (market.includes("over25") || market.includes("+2.5")) {
+    if (totalGoals >= 3) return "green";
+    return finished ? "red" : "";
+  }
+
+  if (market.includes("under25") || market.includes("under2.5")) {
+    if (totalGoals >= 3) return "red";
+    return finished ? "green" : "";
+  }
+
+  if (market.includes("corner") || market.includes("escanteio")) {
+    if (corners >= 9) return "green";
+    return finished ? "red" : "";
+  }
+
+  return "";
+}
+
 export default function App() {
   const today = useMemo(() => getTodayInput(), []);
   const [selectedPage, setSelectedPage] = useState("dashboard");
@@ -153,6 +210,7 @@ export default function App() {
   const [signals, setSignals] = useState([]);
   const [bankStatus, setBankStatus] = useState("Servidor conectado ao Firestore pela API.");
   const savedSignalKeysRef = useRef(new Set());
+  const settlingSignalIdsRef = useRef(new Set());
 
   const live = useLiveGames(liveInterval);
   const prematch = usePrematchGames();
@@ -213,6 +271,46 @@ export default function App() {
     };
   }, [analysis.filteredGames]);
 
+  useEffect(() => {
+    const gamesBySource = new Map();
+    [...live.games, ...prematch.games, ...sourceGames].forEach((game) => {
+      if (!game.sourceId) return;
+      const current = gamesBySource.get(game.sourceId) || [];
+      current.push(game);
+      gamesBySource.set(game.sourceId, current);
+    });
+
+    const pendingSignals = signals.filter((signal) => {
+      return signal.id && signal.sourceId && signal.result === "pendente" && !settlingSignalIdsRef.current.has(signal.id);
+    });
+
+    if (!pendingSignals.length || !gamesBySource.size) return;
+
+    let cancelled = false;
+    pendingSignals.forEach((signal) => {
+      const candidates = gamesBySource.get(signal.sourceId) || [];
+      const game = candidates.find((item) => item.market === signal.market) || candidates[0];
+      const result = getSignalSettlement(signal, game);
+      if (!result) return;
+
+      settlingSignalIdsRef.current.add(signal.id);
+      updateSignalResult(signal.id, result)
+        .then(() => {
+          if (cancelled) return;
+          setSignals((current) => current.map((item) => item.id === signal.id ? { ...item, result } : item));
+          setBankStatus(`Sinal ${result.toUpperCase()} atualizado automaticamente.`);
+        })
+        .catch((error) => {
+          settlingSignalIdsRef.current.delete(signal.id);
+          if (!cancelled) setBankStatus(`Erro ao atualizar resultado automatico: ${error.message}`);
+        });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [signals, live.games, prematch.games, sourceGames]);
+
   async function openLive() {
     setSelectedPage("live");
     await live.start();
@@ -226,11 +324,13 @@ export default function App() {
 
   async function changeSignalResult(id, result) {
     await updateSignalResult(id, result);
+    settlingSignalIdsRef.current.add(id);
     setSignals((current) => current.map((signal) => signal.id === id ? { ...signal, result } : signal));
   }
 
   async function removeSignal(id) {
     await deleteSignal(id);
+    settlingSignalIdsRef.current.delete(id);
     setSignals((current) => current.filter((signal) => signal.id !== id));
     setBankStatus("Sinal excluido do Firestore.");
   }
