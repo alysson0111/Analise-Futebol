@@ -57,7 +57,9 @@ function extractSourceId(url, fallback) {
 }
 
 function extractScore(chunk) {
-  const scoreMatch = String(chunk || "").match(/\*{0,2}(\d+)\s*-\s*(\d+)\*{0,2}(?:\s*\((\d+)\s*-\s*(\d+)\))?/);
+  const text = String(chunk || "");
+  const scoreMatch = text.match(/\*\*(\d+)\s*-\s*(\d+)\*\*/i)
+    || text.match(/(?:^|\n)\s*(?:HT|FT|Live Pen\.|\+?\d{1,3}'?|\d{1,3})\s*\n+\s*(\d+)\s*-\s*(\d+)(?:\s*\(|\s*\n)/i);
   const homeGoals = asNumber(scoreMatch?.[1]);
   const awayGoals = asNumber(scoreMatch?.[2]);
   return {
@@ -97,7 +99,13 @@ function extractPrediction(chunk) {
 
 function parseLiveMarkdown(markdown) {
   const sectionStart = markdown.indexOf("# Live football predictions");
-  const section = sectionStart >= 0 ? markdown.slice(sectionStart) : markdown;
+  const rawSection = sectionStart >= 0 ? markdown.slice(sectionStart) : markdown;
+  const endMarkers = ["### More predictions", "### Pick of the day", "### Top trends", "[All trends]"];
+  const sectionEnd = endMarkers
+    .map((marker) => rawSection.indexOf(marker))
+    .filter((index) => index > 0)
+    .sort((a, b) => a - b)[0];
+  const section = sectionEnd ? rawSection.slice(0, sectionEnd) : rawSection;
   const matchPattern = /\[([^\]\n]+?\s+\d{2}\/\d{2}\/\d{4}\s+\d{1,2}:\d{2}\s+[AP]M)\]\((https:\/\/www\.forebet\.com\/en\/football\/matches\/[^)]+)\)/gi;
   const matches = [...section.matchAll(matchPattern)];
 
