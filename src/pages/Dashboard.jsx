@@ -13,7 +13,7 @@ export default function Dashboard(props) {
       <SearchBar {...props} />
       <FiltersBar {...props} />
       <StatsBox metrics={props.metrics} />
-      <GameCard games={props.games} updatedAt={props.updatedAt} onSave={props.saveOneSignal} />
+      <GameCard games={props.games} updatedAt={props.updatedAt} />
       <SignalsReport {...props} />
     </main>
   );
@@ -64,7 +64,7 @@ export function SearchBar({ dateStart, setDateStart, dateEnd, setDateEnd, liveIn
   );
 }
 
-export function SignalsReport({ signals, bankStatus, saveCurrentSignals, changeSignalResult }) {
+export function SignalsReport({ signals, bankStatus, changeSignalResult, removeSignal }) {
   const report = calculateReport(signals);
 
   function exportCsv() {
@@ -133,7 +133,6 @@ export function SignalsReport({ signals, bankStatus, saveCurrentSignals, changeS
         <h2>Banco de sinais</h2>
         <p className="subtitle">{bankStatus}</p>
         <div className="report-actions">
-          <button className="btn primary" onClick={saveCurrentSignals}>Salvar sinais atuais</button>
           <button className="btn" onClick={exportCsv}>Excel CSV</button>
           <button className="btn" onClick={exportPdf}>PDF</button>
         </div>
@@ -145,6 +144,7 @@ export function SignalsReport({ signals, bankStatus, saveCurrentSignals, changeS
           <div className="mini-stat"><span>Green</span><strong>{report.green}</strong></div>
           <div className="mini-stat"><span>Red</span><strong>{report.red}</strong></div>
           <div className="mini-stat"><span>Assertividade</span><strong>{report.hitRate}%</strong></div>
+          <div className="mini-stat"><span>ROI</span><strong>{report.roi}%</strong></div>
         </div>
         <div className="table-wrap">
           <table className="report-table">
@@ -155,10 +155,11 @@ export function SignalsReport({ signals, bankStatus, saveCurrentSignals, changeS
                 <th>Mercado</th>
                 <th>Odd</th>
                 <th>Resultado</th>
+                <th>Ação</th>
               </tr>
             </thead>
             <tbody>
-              {!signals.length && <tr><td colSpan="5" className="empty">Nenhum sinal salvo.</td></tr>}
+              {!signals.length && <tr><td colSpan="6" className="empty">Nenhum sinal salvo.</td></tr>}
               {signals.map((signal) => (
                 <tr key={signal.id}>
                   <td>{signal.createdAtText || "-"}</td>
@@ -169,6 +170,9 @@ export function SignalsReport({ signals, bankStatus, saveCurrentSignals, changeS
                     <button className="btn green" onClick={() => changeSignalResult(signal.id, "green")}>Green</button>
                     <button className="btn red" onClick={() => changeSignalResult(signal.id, "red")}>Red</button>
                     <span>{signal.result || "pendente"}</span>
+                  </td>
+                  <td>
+                    <button className="btn red" onClick={() => removeSignal(signal.id)}>Excluir</button>
                   </td>
                 </tr>
               ))}

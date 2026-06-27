@@ -17,3 +17,10 @@ export function updateSignalResult(id, result) {
     body: JSON.stringify({ id, result })
   });
 }
+
+export function deleteSignal(id) {
+  return apiJson("/api/signals", {
+    method: "DELETE",
+    body: JSON.stringify({ id })
+  });
+}

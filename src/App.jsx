@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Dashboard from "./pages/Dashboard.jsx";
 import Live from "./pages/Live.jsx";
 import Prematch from "./pages/Prematch.jsx";
@@ -7,7 +7,7 @@ import { getTodayInput } from "./analysis/scoreUtils.js";
 import { useLiveGames } from "./hooks/useLiveGames.js";
 import { usePrematchGames } from "./hooks/usePrematchGames.js";
 import { useGameAnalysis } from "./hooks/useGameAnalysis.js";
-import { listSignals, saveSignal, updateSignalResult } from "./firebase/firebase.js";
+import { deleteSignal, listSignals, saveSignal, updateSignalResult } from "./firebase/firebase.js";
 
 const styles = `
   :root {
@@ -92,9 +92,8 @@ const styles = `
   .games-table th:nth-child(6) { width: 5%; }
   .games-table th:nth-child(7) { width: 8%; }
   .games-table th:nth-child(8) { width: 7%; }
-  .games-table th:nth-child(9) { width: 19%; }
+  .games-table th:nth-child(9) { width: 22%; }
   .games-table th:nth-child(10) { width: 8%; }
-  .games-table th:nth-child(11) { width: 8%; }
   .games-table .btn { min-height: 30px; padding: 0 6px; font-size: 11px; }
   .games-table td:nth-child(10) { overflow-wrap: normal; white-space: nowrap; }
   .games-table .status { min-width: 72px; justify-content: center; padding: 4px 7px; font-size: 10px; gap: 4px; }
@@ -109,7 +108,7 @@ const styles = `
   .stat-missing { border-left-color: var(--amber); background: #fff6e8; color: #8a5207; }
   .stat-grade { border-left-color: #263238; background: #eef1f0; color: #263238; font-weight: 800; }
   .empty { padding: 28px; color: var(--muted); text-align: center; }
-  .mini-stats { display: grid; grid-template-columns: repeat(4, minmax(90px, 1fr)); gap: 8px; }
+  .mini-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; }
   .mini-stat { background: #f7faf8; border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
   .mini-stat span { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; font-weight: 800; }
   .mini-stat strong { display: block; margin-top: 5px; font-size: 20px; }
@@ -151,6 +150,7 @@ export default function App() {
   const [filters, setFilters] = useState({ league: "all", market: "all", minConfidence: 0, minOdd: 1, search: "", mostrarApenasAprovados: false });
   const [signals, setSignals] = useState([]);
   const [bankStatus, setBankStatus] = useState("Servidor conectado ao Firestore pela API.");
+  const savedSignalKeysRef = useRef(new Set());
 
   const live = useLiveGames(liveInterval);
   const prematch = usePrematchGames();
@@ -161,7 +161,11 @@ export default function App() {
 
   useEffect(() => {
     listSignals()
-      .then((payload) => setSignals(payload.signals || []))
+      .then((payload) => {
+        const saved = payload.signals || [];
+        savedSignalKeysRef.current = new Set(saved.map((signal) => signal.key).filter(Boolean));
+        setSignals(saved);
+      })
       .catch((error) => setBankStatus(`Configure Firebase no servidor: ${error.message}`));
     live.start().catch((error) => {
       live.stop();
@@ -169,6 +173,43 @@ export default function App() {
       console.error(error);
     });
   }, []);
+
+  useEffect(() => {
+    const entries = analysis.filteredGames.filter((game) => {
+      const isSignal = game.analise?.entrada || game.status === "Entrada";
+      return isSignal && game.key && !savedSignalKeysRef.current.has(game.key);
+    });
+    if (!entries.length) return;
+
+    let cancelled = false;
+    async function autoSaveSignals() {
+      let savedCount = 0;
+      for (const game of entries) {
+        try {
+          savedSignalKeysRef.current.add(game.key);
+          const saved = await saveSignal(game);
+          if (cancelled) return;
+          setSignals((current) => {
+            const exists = current.some((signal) => signal.id === saved.id || signal.key === saved.key);
+            if (exists) {
+              return current.map((signal) => signal.id === saved.id || signal.key === saved.key ? { ...signal, ...saved } : signal);
+            }
+            savedCount += 1;
+            return [saved, ...current];
+          });
+        } catch (error) {
+          savedSignalKeysRef.current.delete(game.key);
+          if (!cancelled) setBankStatus(`Erro ao salvar sinal automatico: ${error.message}`);
+        }
+      }
+      if (!cancelled && savedCount > 0) setBankStatus(`${savedCount} novo(s) sinal(is) salvo(s) automaticamente.`);
+    }
+
+    autoSaveSignals();
+    return () => {
+      cancelled = true;
+    };
+  }, [analysis.filteredGames]);
 
   async function openLive() {
     setSelectedPage("live");
@@ -181,24 +222,15 @@ export default function App() {
     await prematch.search(dateStart, dateEnd);
   }
 
-  async function saveCurrentSignals() {
-    const entries = analysis.filteredGames.filter((game) => game.analise?.entrada || game.status === "Entrada");
-    for (const game of entries) {
-      const saved = await saveSignal(game);
-      setSignals((current) => [saved, ...current]);
-    }
-    setBankStatus(`${entries.length} sinal(is) salvo(s).`);
-  }
-
-  async function saveOneSignal(game) {
-    const saved = await saveSignal(game);
-    setSignals((current) => [saved, ...current]);
-    setBankStatus("Sinal salvo no Firestore.");
-  }
-
   async function changeSignalResult(id, result) {
     await updateSignalResult(id, result);
     setSignals((current) => current.map((signal) => signal.id === id ? { ...signal, result } : signal));
+  }
+
+  async function removeSignal(id) {
+    await deleteSignal(id);
+    setSignals((current) => current.filter((signal) => signal.id !== id));
+    setBankStatus("Sinal excluido do Firestore.");
   }
 
   function renderPage() {
@@ -215,9 +247,8 @@ export default function App() {
       statusText,
       signals,
       bankStatus,
-      saveCurrentSignals,
-      saveOneSignal,
       changeSignalResult,
+      removeSignal,
       dateStart,
       setDateStart,
       dateEnd,

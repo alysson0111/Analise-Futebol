@@ -12,7 +12,7 @@ function getStatClass(entry) {
   return "stat-line";
 }
 
-export default function GameCard({ games, updatedAt, onSave }) {
+export default function GameCard({ games, updatedAt }) {
   if (!games.length) {
     return (
       <section className="table-panel panel">
@@ -45,7 +45,6 @@ export default function GameCard({ games, updatedAt, onSave }) {
               <th>Confianca</th>
               <th>Sinais</th>
               <th>Status</th>
-              <th>Registro</th>
             </tr>
           </thead>
           <tbody>
@@ -67,7 +66,6 @@ export default function GameCard({ games, updatedAt, onSave }) {
                   </div>
                 </td>
                 <td><AnalysisBadge status={game.analise?.statusOriginal || game.status} /></td>
-                <td>{(game.analise?.entrada || game.status === "Entrada") && <button className="btn" onClick={() => onSave(game)}>Salvar</button>}</td>
               </tr>
             ))}
           </tbody>

@@ -6,21 +6,34 @@ function send(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+function readBody(req) {
+  if (!req.body) return {};
+  if (typeof req.body === "string") return JSON.parse(req.body || "{}");
+  return req.body;
+}
+
 function cleanSignal(input) {
+  const analysis = input.analise || {};
+  const stats = [
+    ...(Array.isArray(analysis.dadosJogo) ? analysis.dadosJogo : []),
+    ...(Array.isArray(analysis.sinais) ? analysis.sinais : []),
+    ...(Array.isArray(input.stats) ? input.stats : [])
+  ];
+
   return {
     key: String(input.key || ""),
     sourceId: String(input.sourceId || ""),
     home: String(input.home || ""),
     away: String(input.away || ""),
     league: String(input.league || ""),
-    market: String(input.market || ""),
-    marketLabel: String(input.marketLabel || ""),
-    odd: Number(input.odd || 0),
-    confidence: Number(input.confidence || 0),
+    market: String(analysis.mercado || input.market || ""),
+    marketLabel: String(analysis.label || input.marketLabel || ""),
+    odd: Number(analysis.odd || input.odd || 0),
+    confidence: Number(analysis.confianca || input.confidence || 0),
     scoreText: String(input.scoreText || ""),
     liveStatus: String(input.liveStatus || ""),
     dateText: String(input.dateText || ""),
-    stats: Array.isArray(input.stats) ? input.stats.map(String).slice(0, 20) : [],
+    stats: stats.map(String).filter(Boolean).slice(0, 20),
     result: input.result === "green" || input.result === "red" ? input.result : "pendente",
     createdAtText: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })
   };
@@ -35,9 +48,21 @@ async function listSignals(res) {
 
 async function saveSignal(req, res) {
   const db = getDb();
-  const record = cleanSignal(req.body || {});
+  const record = cleanSignal(readBody(req));
   if (!record.key || !record.home || !record.away || !record.market) {
     return send(res, 400, { error: "Sinal incompleto." });
+  }
+
+  const existing = await db.collection("sinais").where("key", "==", record.key).limit(1).get();
+  if (!existing.empty) {
+    const doc = existing.docs[0];
+    await doc.ref.update({
+      ...record,
+      result: doc.data().result || record.result,
+      createdAtText: doc.data().createdAtText || record.createdAtText,
+      updatedAt: now()
+    });
+    return send(res, 200, { id: doc.id, ...doc.data(), ...record, duplicate: true });
   }
 
   const doc = await db.collection("sinais").add({
@@ -51,7 +76,7 @@ async function saveSignal(req, res) {
 
 async function updateResult(req, res) {
   const db = getDb();
-  const { id, result } = req.body || {};
+  const { id, result } = readBody(req);
   if (!id || !["green", "red", "pendente"].includes(result)) {
     return send(res, 400, { error: "Resultado invalido." });
   }
@@ -64,11 +89,21 @@ async function updateResult(req, res) {
   send(res, 200, { ok: true });
 }
 
+async function deleteSignal(req, res) {
+  const db = getDb();
+  const { id } = readBody(req);
+  if (!id) return send(res, 400, { error: "Informe o sinal para excluir." });
+
+  await db.collection("sinais").doc(String(id)).delete();
+  send(res, 200, { ok: true });
+}
+
 export default async function handler(req, res) {
   try {
     if (req.method === "GET") return await listSignals(res);
     if (req.method === "POST") return await saveSignal(req, res);
     if (req.method === "PATCH") return await updateResult(req, res);
+    if (req.method === "DELETE") return await deleteSignal(req, res);
     return send(res, 405, { error: "Metodo nao permitido." });
   } catch (error) {
     send(res, 500, { error: error.message || "Erro no banco de sinais." });
