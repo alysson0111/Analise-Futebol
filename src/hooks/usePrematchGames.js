@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { analyzePrematchWithAi } from "../api/aiAnalysis.js";
+import { analyzePrematchWithForebet } from "../api/forebetAnalysis.js";
 import { fetchPrematchFixtures } from "../api/fixtures.js";
 
 export function usePrematchGames() {
@@ -10,16 +10,16 @@ export function usePrematchGames() {
   async function search(start, end) {
     setStatusText("Consultando periodo...");
     const payload = await fetchPrematchFixtures(start, end);
-    setStatusText("Analisando pre-jogo com IA...");
+    setStatusText("Consultando analise do Forebet...");
     try {
-      const aiPayload = await analyzePrematchWithAi(payload.games || []);
-      setGames(aiPayload.games || payload.games || []);
-      setUpdatedAt(`Atualizado as ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} - ${payload.count || 0} jogo(s), ${aiPayload.aiCount || 0} sinal(is) por IA`);
-      setStatusText(aiPayload.warning || "Pre-jogo atualizado por IA");
+      const forebetPayload = await analyzePrematchWithForebet(payload.games || [], start, end);
+      setGames(forebetPayload.games || payload.games || []);
+      setUpdatedAt(`Atualizado as ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} - ${payload.count || 0} jogo(s), ${forebetPayload.forebetCount || 0} sinal(is) Forebet`);
+      setStatusText(`Pre-jogo atualizado com Forebet (${forebetPayload.sourceCount || 0} previsoes lidas)`);
     } catch (error) {
       setGames(payload.games || []);
-      setUpdatedAt(`Atualizado as ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} - ${payload.count || 0} jogo(s), IA indisponivel`);
-      setStatusText(`IA indisponivel: ${error.message}`);
+      setUpdatedAt(`Atualizado as ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} - ${payload.count || 0} jogo(s), Forebet indisponivel`);
+      setStatusText(`Forebet indisponivel: ${error.message}`);
     }
   }
 
