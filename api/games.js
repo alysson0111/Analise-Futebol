@@ -1,4 +1,5 @@
 import { analyzeFixtures, publicGame } from "./_lib/scanner.js";
+import { fetchForebetLiveGames } from "./_lib/forebetLive.js";
 
 const API_BASE = "https://v3.football.api-sports.io/fixtures";
 const API_STATISTICS = "https://v3.football.api-sports.io/fixtures/statistics";
@@ -89,26 +90,24 @@ export default async function handler(req, res) {
   if (req.method !== "GET") return send(res, 405, { error: "Metodo nao permitido." });
 
   try {
+    const mode = req.query.mode === "live" ? "live" : "period";
+    if (mode === "live") {
+      const payload = await fetchForebetLiveGames();
+      return send(res, 200, payload);
+    }
+
     const token = process.env.API_FOOTBALL_KEY;
     if (!token) throw new Error("API_FOOTBALL_KEY nao configurada na Vercel.");
 
-    const mode = req.query.mode === "live" ? "live" : "period";
     const payloads = [];
 
-    if (mode === "live") {
-      const payload = await fetchApi("?live=all", token);
-      await enrichLive(payload, token);
+    const today = new Date().toISOString().slice(0, 10);
+    const start = parseDate(req.query.start) || today;
+    const end = parseDate(req.query.end) || start;
+    for (const day of dateRange(start, end)) {
+      const payload = await fetchApi(`?date=${day}`, token);
       await enrichOdds(payload, token);
       payloads.push(payload);
-    } else {
-      const today = new Date().toISOString().slice(0, 10);
-      const start = parseDate(req.query.start) || today;
-      const end = parseDate(req.query.end) || start;
-      for (const day of dateRange(start, end)) {
-        const payload = await fetchApi(`?date=${day}`, token);
-        await enrichOdds(payload, token);
-        payloads.push(payload);
-      }
     }
 
     const fixtureCount = payloads.reduce((sum, payload) => sum + getRows(payload).length, 0);
