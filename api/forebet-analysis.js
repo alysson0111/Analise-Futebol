@@ -23,6 +23,17 @@ function parseDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value || "") ? value : "";
 }
 
+function getSaoPauloDate() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
 function dateRange(start, end) {
   const startDate = new Date(`${start}T00:00:00Z`);
   const endDate = new Date(`${end || start}T00:00:00Z`);
@@ -38,7 +49,7 @@ function dateRange(start, end) {
 }
 
 function forebetReaderUrl(date) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getSaoPauloDate();
   const sourceUrl = date === today ? FOREBET_TODAY_URL : `${FOREBET_DATE_URL}/${date}`;
   return `https://r.jina.ai/http://r.jina.ai/http://${sourceUrl}`;
 }
@@ -193,9 +204,14 @@ export default async function handler(req, res) {
   try {
     const body = readBody(req);
     const games = Array.isArray(body.games) ? body.games : [];
-    const start = parseDate(body.start) || new Date().toISOString().slice(0, 10);
+    const start = parseDate(body.start) || getSaoPauloDate();
     const end = parseDate(body.end) || start;
-    const predictions = (await Promise.all(dateRange(start, end).map(fetchForebetPredictions))).flat();
+    const settled = await Promise.allSettled(dateRange(start, end).map(fetchForebetPredictions));
+    const predictions = settled.flatMap((entry) => entry.status === "fulfilled" ? entry.value : []);
+    if (!predictions.length) {
+      const reason = settled.find((entry) => entry.status === "rejected")?.reason?.message;
+      throw new Error(reason || "Forebet nao retornou previsoes legiveis.");
+    }
     const { analyzedGames, picksCount } = applyForebet(games, predictions);
 
     send(res, 200, {
