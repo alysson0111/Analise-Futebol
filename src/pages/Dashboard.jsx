@@ -68,14 +68,15 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
   const report = calculateReport(signals);
 
   function exportCsv() {
-    const header = ["data_hora", "jogo", "liga", "mercado", "odd", "confianca", "resultado", "scanner"];
+    const header = ["data_hora", "jogo", "liga", "resultado_final", "mercado", "odd", "confianca", "resultado", "scanner"];
     const rows = signals.map((signal) => [
       signal.createdAtText || "",
       `${signal.home} x ${signal.away}`,
       signal.league || "",
+      signal.scoreText || "",
       signal.marketLabel || signal.market || "",
       signal.odd || "",
-      signal.confidence || "",
+      `${Math.round(Number(signal.confidence || 0))}%`,
       signal.result || "pendente",
       (signal.stats || []).join(" | ")
     ]);
@@ -96,8 +97,10 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
         <td>${signal.createdAtText || "-"}</td>
         <td>${signal.home} x ${signal.away}</td>
         <td>${signal.league || "-"}</td>
+        <td>${signal.scoreText || "-"}</td>
         <td>${signal.marketLabel || signal.market}</td>
         <td>${currencyOdd(signal.odd)}</td>
+        <td>${Math.round(Number(signal.confidence || 0))}%</td>
         <td>${signal.result || "pendente"}</td>
       </tr>
     `).join("");
@@ -117,7 +120,7 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
         <body>
           <h1>Relatorio de sinais</h1>
           <table>
-            <thead><tr><th>Data/Hora</th><th>Jogo</th><th>Liga</th><th>Mercado</th><th>Odd</th><th>Resultado</th></tr></thead>
+            <thead><tr><th>Data/Hora</th><th>Jogo</th><th>Liga</th><th>Resultado final</th><th>Mercado</th><th>Odd</th><th>Confianca</th><th>Resultado</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </body>
@@ -155,21 +158,25 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
                 <th>Data/Hora</th>
                 <th>Jogo</th>
                 <th>Liga</th>
+                <th>Resultado final</th>
                 <th>Mercado</th>
                 <th>Odd</th>
+                <th>Confianca</th>
                 <th>Resultado</th>
                 <th>Acao</th>
               </tr>
             </thead>
             <tbody>
-              {!signals.length && <tr><td colSpan="7" className="empty">Nenhum sinal salvo.</td></tr>}
+              {!signals.length && <tr><td colSpan="9" className="empty">Nenhum sinal salvo.</td></tr>}
               {signals.map((signal) => (
                 <tr key={signal.id}>
                   <td>{signal.createdAtText || "-"}</td>
                   <td>{signal.home} x {signal.away}</td>
                   <td>{signal.league || "-"}</td>
+                  <td>{signal.scoreText || "-"}</td>
                   <td>{signal.marketLabel || signal.market}</td>
                   <td>{currencyOdd(signal.odd)}</td>
+                  <td>{Math.round(Number(signal.confidence || 0))}%</td>
                   <td>
                     <button className="btn green" onClick={() => changeSignalResult(signal.id, "green")}>Green</button>
                     <button className="btn red" onClick={() => changeSignalResult(signal.id, "red")}>Red</button>

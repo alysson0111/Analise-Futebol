@@ -80,18 +80,24 @@ async function saveSignal(req, res) {
 
 async function updateResult(req, res) {
   const db = getDb();
-  const { id, result } = readBody(req);
+  const { id, result, scoreText, liveStatus, dateText } = readBody(req);
   if (!id || !["green", "red", "pendente"].includes(result)) {
     return send(res, 400, { error: "Resultado invalido." });
   }
 
-  await db.collection("sinais").doc(String(id)).update({
+  const update = {
     result,
     settledAtText: result === "pendente" ? "" : new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
     updatedAt: now()
-  });
+  };
 
-  send(res, 200, { ok: true });
+  if (scoreText) update.scoreText = String(scoreText);
+  if (liveStatus) update.liveStatus = String(liveStatus);
+  if (dateText) update.dateText = String(dateText);
+
+  await db.collection("sinais").doc(String(id)).update(update);
+
+  send(res, 200, { ok: true, ...update });
 }
 
 async function deleteSignal(req, res) {

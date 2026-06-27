@@ -11,10 +11,10 @@ export function saveSignal(signal) {
   });
 }
 
-export function updateSignalResult(id, result) {
+export function updateSignalResult(id, result, extra = {}) {
   return apiJson("/api/signals", {
     method: "PATCH",
-    body: JSON.stringify({ id, result })
+    body: JSON.stringify({ id, result, ...extra })
   });
 }
 

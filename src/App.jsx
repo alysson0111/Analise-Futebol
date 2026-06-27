@@ -294,10 +294,15 @@ export default function App() {
       if (!result) return;
 
       settlingSignalIdsRef.current.add(signal.id);
-      updateSignalResult(signal.id, result)
-        .then(() => {
+      const settlement = {
+        scoreText: game.scoreText || signal.scoreText || "",
+        liveStatus: game.liveStatus || signal.liveStatus || "",
+        dateText: game.dateText || signal.dateText || ""
+      };
+      updateSignalResult(signal.id, result, settlement)
+        .then((payload) => {
           if (cancelled) return;
-          setSignals((current) => current.map((item) => item.id === signal.id ? { ...item, result } : item));
+          setSignals((current) => current.map((item) => item.id === signal.id ? { ...item, ...settlement, ...payload, result } : item));
           setBankStatus(`Sinal ${result.toUpperCase()} atualizado automaticamente.`);
         })
         .catch((error) => {
