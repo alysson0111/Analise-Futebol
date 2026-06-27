@@ -30,7 +30,7 @@ export default function FiltersBar({ leagues, filters, setFilters, selectedMarke
       </div>
       <div className="field">
         <label htmlFor="minOdd">Odd minima</label>
-        <input id="minOdd" type="number" min="1" step="0.01" value={filters.minOdd} onChange={(event) => update("minOdd", event.target.value)} />
+        <input id="minOdd" type="number" min="0" step="0.01" value={filters.minOdd} onChange={(event) => update("minOdd", event.target.value)} />
       </div>
       <div className="field">
         <label htmlFor="search">Buscar jogo</label>
