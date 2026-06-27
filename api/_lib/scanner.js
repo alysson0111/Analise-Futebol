@@ -94,6 +94,19 @@ function scanOver25(game) {
 }
 
 function scanUnder25(game) {
+  if (game.totalGoals >= 3) {
+    const checks = [
+      item("Under 2.5 ainda possivel", false, `${game.scoreText || game.totalGoals} ja passou da linha`, true)
+    ];
+    return result(game, {
+      confidence: 0,
+      odd: game.under25Odd || game.odd || 0,
+      grade: "Descarta",
+      status: "Observar",
+      statsPrefix: "CLASSIFICACAO Descarta (linha ja perdida)"
+    }, checks);
+  }
+
   const oddOk = !game.under25Odd || (game.under25Odd >= 1.7 && game.under25Odd <= 2.2);
   const checks = [
     item("Times marcam pouco", game.avgGoalsForBothTeams <= 1.2, `${game.avgGoalsForBothTeams.toFixed(2)}`, game.hasHistory),
@@ -203,6 +216,8 @@ function buildGameData({ totalGoals, liveCorners, liveShots, liveShotsOnTarget, 
 
 function normalizeFixture(row) {
   const kickoff = row.fixture?.date ? new Date(row.fixture.date) : null;
+  const source = row.source || "";
+  const isForebetLive = source === "Forebet Live";
   const homeGoals = asNumber(row.goals?.home);
   const awayGoals = asNumber(row.goals?.away);
   const totalGoals = homeGoals + awayGoals;
@@ -213,7 +228,7 @@ function normalizeFixture(row) {
   const liveShotsOnTarget = getStatTotal(row, "Shots on Goal");
   const favoriteShots = getStatMax(row, "Total Shots") || getStatMax(row, "Shots on Goal");
   const hasLiveStats = Boolean((row.liveStats || []).length);
-  const hasHistory = Boolean(row.bothTeamsScorePercent || row.bttsPercent || row.avgGoalsTotal || row.mediaGolsConjunta);
+  const hasHistory = !isForebetLive && Boolean(row.bothTeamsScorePercent || row.bttsPercent || row.avgGoalsTotal || row.mediaGolsConjunta);
 
   return {
     sourceId: String(row.fixture?.id || `${row.teams?.home?.name}-${row.teams?.away?.name}-${row.fixture?.date}`),
@@ -231,6 +246,7 @@ function normalizeFixture(row) {
     liveCorners,
     liveShots,
     liveShotsOnTarget,
+    source,
     dadosJogo: buildGameData({ totalGoals, liveCorners, liveShots, liveShotsOnTarget, elapsed, apiStatus, hasLiveStats }),
     odd: 0,
     bttsPercent: percent(row.bothTeamsScorePercent || row.bttsPercent || row.ambosMarcamPercentual),
@@ -295,6 +311,7 @@ export function publicGame(game) {
     liveCorners: game.liveCorners,
     liveShots: game.liveShots,
     liveShotsOnTarget: game.liveShotsOnTarget,
+    source: game.source,
     dadosJogo: game.dadosJogo || [],
     market: game.market,
     marketLabel: game.marketLabel,
