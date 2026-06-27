@@ -15,7 +15,7 @@ export function usePrematchGames() {
       const forebetPayload = await analyzePrematchWithForebet(payload.games || [], start, end);
       setGames(forebetPayload.games || payload.games || []);
       setUpdatedAt(`Atualizado as ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} - ${payload.count || 0} jogo(s), ${forebetPayload.forebetCount || 0} sinal(is) Forebet`);
-      setStatusText(`Pre-jogo atualizado com Forebet (${forebetPayload.sourceCount || 0} previsoes lidas)`);
+      setStatusText(`Forebet: ${forebetPayload.forebetGoalsCount || 0} over gols e ${forebetPayload.forebetCornersCount || 0} escanteios`);
     } catch (error) {
       setGames(payload.games || []);
       setUpdatedAt(`Atualizado as ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} - ${payload.count || 0} jogo(s), Forebet indisponivel`);

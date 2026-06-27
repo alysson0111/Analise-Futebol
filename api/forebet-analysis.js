@@ -1,10 +1,13 @@
 const FOREBET_TODAY_URL = "https://www.forebet.com/en/football-tips-and-predictions-for-today/predictions-under-over-goals";
 const FOREBET_DATE_URL = "https://www.forebet.com/en/football-predictions/under-over-25-goals";
+const FOREBET_CORNERS_TODAY_URL = "https://www.forebet.com/en/football-tips-and-predictions-for-today/corners";
+const FOREBET_CORNERS_DATE_URL = "https://www.forebet.com/en/football-predictions/corners";
 
 const MARKET_LABELS = {
   over05: "+0.5 gols",
   over15: "+1.5 gols",
-  over25: "+2.5 gols"
+  over25: "+2.5 gols",
+  corners: "Escanteios"
 };
 
 function send(res, status, body) {
@@ -48,9 +51,11 @@ function dateRange(start, end) {
   return days;
 }
 
-function forebetReaderUrl(date) {
+function forebetReaderUrl(date, type = "goals") {
   const today = getSaoPauloDate();
-  const sourceUrl = date === today ? FOREBET_TODAY_URL : `${FOREBET_DATE_URL}/${date}`;
+  const sourceUrl = type === "corners"
+    ? (date === today ? FOREBET_CORNERS_TODAY_URL : `${FOREBET_CORNERS_DATE_URL}/${date}`)
+    : (date === today ? FOREBET_TODAY_URL : `${FOREBET_DATE_URL}/${date}`);
   return `https://r.jina.ai/http://r.jina.ai/http://${sourceUrl}`;
 }
 
@@ -94,7 +99,13 @@ function confidenceFromPrediction(prediction) {
   return Math.max(62, Math.min(92, Math.round(56 + overProb * 0.28 + Math.max(0, avgGoals - 2.5) * 8)));
 }
 
-function parseForebet(markdown) {
+function confidenceFromCorners(prediction) {
+  const overProb = Number(prediction.overProb || 0);
+  const avgCorners = Number(prediction.avgCorners || 0);
+  return Math.max(62, Math.min(92, Math.round(54 + overProb * 0.32 + Math.max(0, avgCorners - 9.5) * 5)));
+}
+
+function parseForebetGoals(markdown) {
   const items = [];
   const rowPattern = /\[([^\]\n]+?)\s+(\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2})\]\((https:\/\/www\.forebet\.com\/en\/football\/matches\/[^)]+)\)\s*\n+\s*(\d{1,3})\s+(\d{1,3})\s*\n+\s*(Over|Under)\s+(\d+(?:\.\d+)?)\s*\n+\s*([0-9]\s*-\s*[0-9])\s*\n+\s*(\d+(?:\.\d+)?)/gi;
 
@@ -111,6 +122,7 @@ function parseForebet(markdown) {
       overProb: Number(overProb),
       correctScore: correctScore.replace(/\s+/g, ""),
       avgGoals: Number(avgGoals),
+      type: "goals",
       normalized: normalizeText(`${teamsText} ${url}`)
     });
     match = rowPattern.exec(markdown);
@@ -119,8 +131,34 @@ function parseForebet(markdown) {
   return items;
 }
 
-async function fetchForebetPredictions(date) {
-  const response = await fetch(forebetReaderUrl(date), {
+function parseForebetCorners(markdown) {
+  const items = [];
+  const rowPattern = /\[([^\]\n]+?)\s+(\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2})\]\((https:\/\/www\.forebet\.com\/en\/football\/matches\/[^)]+)\)\s*\n+\s*(\d{1,3})\s+(\d{1,3})\s*\n+\s*(Over|Under)\s+(\d+\s*-\s*\d+)\s*\n+\s*(\d+\s*-\s*\d+)\s*\n+\s*(\d+(?:\.\d+)?)/gi;
+
+  let match = rowPattern.exec(markdown);
+  while (match) {
+    const [, teamsText, kickoffText, url, underProb, overProb, side, cornerPrediction, cornerScore, avgCorners] = match;
+    items.push({
+      teamsText: teamsText.trim(),
+      kickoffText,
+      url,
+      side,
+      cornerPrediction: cornerPrediction.replace(/\s+/g, ""),
+      cornerScore: cornerScore.replace(/\s+/g, ""),
+      avgCorners: Number(avgCorners),
+      underProb: Number(underProb),
+      overProb: Number(overProb),
+      type: "corners",
+      normalized: normalizeText(`${teamsText} ${url}`)
+    });
+    match = rowPattern.exec(markdown);
+  }
+
+  return items;
+}
+
+async function fetchForebetPredictions(date, type = "goals") {
+  const response = await fetch(forebetReaderUrl(date, type), {
     headers: {
       "User-Agent": "Mozilla/5.0 Analise-Futebol/1.0"
     }
@@ -128,7 +166,7 @@ async function fetchForebetPredictions(date) {
 
   if (!response.ok) throw new Error(`Forebet retornou ${response.status}.`);
   const markdown = await response.text();
-  const predictions = parseForebet(markdown);
+  const predictions = type === "corners" ? parseForebetCorners(markdown) : parseForebetGoals(markdown);
   if (!predictions.length) throw new Error("Forebet nao retornou previsoes legiveis.");
   return predictions.map((prediction) => ({ ...prediction, date }));
 }
@@ -150,36 +188,58 @@ function findPrediction(game, predictions) {
   return best?.prediction || null;
 }
 
-function applyForebet(games, predictions) {
+function applyForebet(games, goalPredictions, cornerPredictions) {
   const picks = new Map();
-  const pickedSources = new Set();
+  const sourceMarkets = new Map();
 
   for (const game of games || []) {
     const sourceId = String(game.sourceId || "");
-    if (!sourceId || pickedSources.has(sourceId)) continue;
+    if (!sourceId || sourceMarkets.get(sourceId)?.has("goals")) continue;
 
-    const prediction = findPrediction(game, predictions);
+    const prediction = findPrediction(game, goalPredictions);
     if (!prediction || prediction.side !== "Over") continue;
 
     const market = marketFromForebet(prediction);
-    picks.set(sourceId, { market, prediction });
-    pickedSources.add(sourceId);
+    picks.set(`${sourceId}-${market}`, { market, prediction, type: "goals" });
+    if (!sourceMarkets.has(sourceId)) sourceMarkets.set(sourceId, new Set());
+    sourceMarkets.get(sourceId).add("goals");
+  }
+
+  for (const game of games || []) {
+    const sourceId = String(game.sourceId || "");
+    if (!sourceId || sourceMarkets.get(sourceId)?.has("corners")) continue;
+
+    const prediction = findPrediction(game, cornerPredictions);
+    if (!prediction || prediction.side !== "Over") continue;
+
+    picks.set(`${sourceId}-corners`, { market: "corners", prediction, type: "corners" });
+    if (!sourceMarkets.has(sourceId)) sourceMarkets.set(sourceId, new Set());
+    sourceMarkets.get(sourceId).add("corners");
   }
 
   const analyzedGames = (games || []).map((game) => {
-    const pick = picks.get(String(game.sourceId || ""));
+    const sourceId = String(game.sourceId || "");
+    const pick = picks.get(`${sourceId}-${game.market}`);
     if (!pick) return game;
 
-    if (game.market !== pick.market) {
+    const { prediction } = pick;
+    if (pick.type === "corners") {
       return {
         ...game,
-        confidence: 0,
-        status: "Observar",
-        stats: [`FOREBET | Melhor mercado over | ${MARKET_LABELS[pick.market]}`]
+        marketLabel: MARKET_LABELS[pick.market],
+        confidence: confidenceFromCorners(prediction),
+        status: "Entrada",
+        odd: game.odd || 0,
+        signals: ["Over 8.5 escanteios", "Over 9.5 escanteios", "Over 10.5 escanteios"],
+        stats: [
+          "FOREBET | Mercado | Escanteios",
+          `FOREBET | Previsao | ${prediction.side} 9.5 cantos`,
+          `FOREBET | Cantos previstos | ${prediction.cornerPrediction}`,
+          `FOREBET | Media de cantos | ${prediction.avgCorners.toFixed(2)}`
+        ]
       };
     }
 
-    const { prediction } = pick;
     return {
       ...game,
       marketLabel: MARKET_LABELS[pick.market],
@@ -195,7 +255,12 @@ function applyForebet(games, predictions) {
     };
   });
 
-  return { analyzedGames, picksCount: picks.size };
+  return {
+    analyzedGames,
+    picksCount: picks.size,
+    goalsCount: [...picks.values()].filter((pick) => pick.type === "goals").length,
+    cornersCount: [...picks.values()].filter((pick) => pick.type === "corners").length
+  };
 }
 
 export default async function handler(req, res) {
@@ -206,18 +271,25 @@ export default async function handler(req, res) {
     const games = Array.isArray(body.games) ? body.games : [];
     const start = parseDate(body.start) || getSaoPauloDate();
     const end = parseDate(body.end) || start;
-    const settled = await Promise.allSettled(dateRange(start, end).map(fetchForebetPredictions));
-    const predictions = settled.flatMap((entry) => entry.status === "fulfilled" ? entry.value : []);
-    if (!predictions.length) {
-      const reason = settled.find((entry) => entry.status === "rejected")?.reason?.message;
+    const days = dateRange(start, end);
+    const goalsSettled = await Promise.allSettled(days.map((date) => fetchForebetPredictions(date, "goals")));
+    const cornersSettled = await Promise.allSettled(days.map((date) => fetchForebetPredictions(date, "corners")));
+    const goalPredictions = goalsSettled.flatMap((entry) => entry.status === "fulfilled" ? entry.value : []);
+    const cornerPredictions = cornersSettled.flatMap((entry) => entry.status === "fulfilled" ? entry.value : []);
+    if (!goalPredictions.length && !cornerPredictions.length) {
+      const reason = [...goalsSettled, ...cornersSettled].find((entry) => entry.status === "rejected")?.reason?.message;
       throw new Error(reason || "Forebet nao retornou previsoes legiveis.");
     }
-    const { analyzedGames, picksCount } = applyForebet(games, predictions);
+    const { analyzedGames, picksCount, goalsCount, cornersCount } = applyForebet(games, goalPredictions, cornerPredictions);
 
     send(res, 200, {
       games: analyzedGames,
       forebetCount: picksCount,
-      sourceCount: predictions.length,
+      forebetGoalsCount: goalsCount,
+      forebetCornersCount: cornersCount,
+      sourceCount: goalPredictions.length + cornerPredictions.length,
+      sourceGoalsCount: goalPredictions.length,
+      sourceCornersCount: cornerPredictions.length,
       source: "Forebet",
       updatedAt: new Date().toISOString()
     });
