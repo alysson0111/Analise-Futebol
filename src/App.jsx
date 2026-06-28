@@ -50,6 +50,7 @@ const styles = `
   h2 { margin: 0; font-size: 18px; }
   .subtitle { margin: 0; color: var(--muted); font-size: 14px; }
   .actions, .report-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+  .report-select { min-height: 40px; border: 1px solid var(--line); background: white; color: var(--ink); border-radius: 8px; padding: 0 12px; min-width: 180px; }
   .btn { min-height: 40px; border: 1px solid var(--line); background: white; color: var(--ink); border-radius: 8px; padding: 0 14px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: normal; text-align: center; }
   .btn.primary { border-color: var(--green); background: var(--green); color: white; }
   .btn.green { border-color: var(--green); color: var(--green-dark); background: #e9f7f0; }
@@ -132,6 +133,7 @@ const styles = `
     .topbar { grid-template-columns: 1fr; }
     .actions { justify-content: stretch; }
     .actions .btn, .report-actions .btn { flex: 1 1 140px; min-width: 0; }
+    .report-select { flex: 1 1 180px; min-width: 0; }
     .date-search, .filters, .metrics, .nav { grid-template-columns: 1fr; }
     th, td { padding: 10px; font-size: 13px; }
     .games-table th, .games-table td { padding: 6px 4px; font-size: 11px; }

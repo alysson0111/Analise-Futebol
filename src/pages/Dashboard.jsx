@@ -1,7 +1,11 @@
+import { useMemo, useState } from "react";
 import FiltersBar from "../components/FiltersBar.jsx";
 import GameCard from "../components/GameCard.jsx";
 import StatsBox from "../components/StatsBox.jsx";
+import { getMarketLabel } from "../analysis/index.js";
 import { calculateReport, currencyOdd, escapeCsv, getTodayInput } from "../analysis/scoreUtils.js";
+
+const REPORT_MARKETS = ["all", "over05", "over15", "over25", "under25", "corners"];
 
 export default function Dashboard(props) {
   const title = props.title || "Radar de oportunidades";
@@ -65,12 +69,17 @@ export function SearchBar({ dateStart, setDateStart, dateEnd, setDateEnd, liveIn
 }
 
 export function SignalsReport({ signals, bankStatus, changeSignalResult, removeSignal }) {
-  const report = calculateReport(signals);
+  const [reportMarket, setReportMarket] = useState("all");
+  const filteredSignals = useMemo(() => {
+    if (reportMarket === "all") return signals;
+    return signals.filter((signal) => signal.market === reportMarket);
+  }, [signals, reportMarket]);
+  const report = calculateReport(filteredSignals);
   const resultLabel = { green: "Green", red: "Red", pendente: "Pendente" };
 
   function exportCsv() {
     const header = ["data_hora", "jogo", "liga", "resultado_final", "mercado", "odd", "confianca", "resultado", "scanner"];
-    const rows = signals.map((signal) => [
+    const rows = filteredSignals.map((signal) => [
       signal.createdAtText || "",
       `${signal.home} x ${signal.away}`,
       signal.league || "",
@@ -93,7 +102,8 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
   function exportPdf() {
     const win = window.open("", "_blank");
     if (!win) return;
-    const rows = signals.map((signal) => `
+    const selectedMarketLabel = reportMarket === "all" ? "Todos" : getMarketLabel(reportMarket);
+    const rows = filteredSignals.map((signal) => `
       <tr>
         <td>${signal.createdAtText || "-"}</td>
         <td>${signal.home} x ${signal.away}</td>
@@ -120,6 +130,7 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
         </head>
         <body>
           <h1>Relatorio de sinais</h1>
+          <p>Mercado: ${selectedMarketLabel}</p>
           <table>
             <thead><tr><th>Data/Hora</th><th>Jogo</th><th>Liga</th><th>Resultado final</th><th>Mercado</th><th>Odd</th><th>Confianca</th><th>Resultado</th></tr></thead>
             <tbody>${rows}</tbody>
@@ -141,6 +152,16 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
             <p className="subtitle">{bankStatus}</p>
           </div>
           <div className="report-actions">
+            <select
+              className="report-select"
+              value={reportMarket}
+              onChange={(event) => setReportMarket(event.target.value)}
+              aria-label="Mercado do relatorio"
+            >
+              {REPORT_MARKETS.map((market) => (
+                <option key={market} value={market}>{market === "all" ? "Todos os mercados" : getMarketLabel(market)}</option>
+              ))}
+            </select>
             <button className="btn" onClick={exportCsv}>Excel CSV</button>
             <button className="btn" onClick={exportPdf}>PDF</button>
           </div>
@@ -168,8 +189,8 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
               </tr>
             </thead>
             <tbody>
-              {!signals.length && <tr><td colSpan="9" className="empty">Nenhum sinal salvo.</td></tr>}
-              {signals.map((signal) => (
+              {!filteredSignals.length && <tr><td colSpan="9" className="empty">Nenhum sinal salvo neste mercado.</td></tr>}
+              {filteredSignals.map((signal) => (
                 <tr key={signal.id}>
                   <td>{signal.createdAtText || "-"}</td>
                   <td>{signal.home} x {signal.away}</td>
