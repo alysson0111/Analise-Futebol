@@ -316,7 +316,9 @@ export default function App() {
         liveStatus: game.liveStatus || signal.liveStatus || "",
         dateText: game.dateText || signal.dateText || "",
         mlPick: game.mlPick || signal.mlPick || "",
-        mlPickLabel: game.mlPickLabel || signal.mlPickLabel || ""
+        mlPickLabel: game.mlPickLabel || signal.mlPickLabel || "",
+        liveCorners: Number.isFinite(Number(game.liveCorners)) ? Number(game.liveCorners) : signal.liveCorners,
+        signalLines: Array.isArray(game.signals) && game.signals.length ? game.signals : signal.signalLines || []
       };
       updateSignalResult(signal.id, result, settlement)
         .then((payload) => {

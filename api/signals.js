@@ -23,6 +23,16 @@ function cleanSignal(input) {
     ...(Array.isArray(analysis.sinais) ? analysis.sinais : []),
     ...(Array.isArray(input.stats) ? input.stats : [])
   ];
+  const signalLines = [
+    ...(Array.isArray(analysis.linhas) ? analysis.linhas : []),
+    ...(Array.isArray(input.signals) ? input.signals : []),
+    ...(Array.isArray(input.signalLines) ? input.signalLines : [])
+  ].map(String).filter(Boolean);
+  const market = String(analysis.mercado || input.market || "");
+  const normalizedSignalLines = market === "corners" && !signalLines.length
+    ? ["Over 8.5 escanteios", "Over 9.5 escanteios", "Over 10.5 escanteios"]
+    : [...new Set(signalLines)];
+  const liveCorners = Number(input.liveCorners);
 
   return {
     key: String(input.key || ""),
@@ -30,7 +40,7 @@ function cleanSignal(input) {
     home: String(input.home || ""),
     away: String(input.away || ""),
     league: String(input.league || ""),
-    market: String(analysis.mercado || input.market || ""),
+    market,
     marketLabel: String(analysis.label || input.marketLabel || ""),
     mlPick: String(analysis.mlPick || input.mlPick || ""),
     mlPickLabel: String(analysis.mlPickLabel || input.mlPickLabel || ""),
@@ -40,6 +50,8 @@ function cleanSignal(input) {
     liveStatus: String(input.liveStatus || ""),
     dateText: String(input.dateText || ""),
     stats: stats.map(String).filter(Boolean).slice(0, 20),
+    signalLines: normalizedSignalLines.slice(0, 10),
+    liveCorners: Number.isFinite(liveCorners) ? liveCorners : null,
     result: input.result === "green" || input.result === "red" ? input.result : "pendente",
     createdAtText: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })
   };
@@ -170,6 +182,7 @@ async function settleSignalsFromApi(db, signals) {
         scoreText: game.scoreText,
         liveStatus: game.liveStatus,
         dateText: game.dateText || signal.dateText || "",
+        liveCorners: game.liveCorners,
         settledAtText: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
         updatedAt: now()
       };
@@ -225,7 +238,7 @@ async function saveSignal(req, res) {
 
 async function updateResult(req, res) {
   const db = getDb();
-  const { id, result, scoreText, liveStatus, dateText, mlPick, mlPickLabel } = readBody(req);
+  const { id, result, scoreText, liveStatus, dateText, mlPick, mlPickLabel, liveCorners, signalLines } = readBody(req);
   if (!id || !["green", "red", "pendente"].includes(result)) {
     return send(res, 400, { error: "Resultado invalido." });
   }
@@ -241,6 +254,8 @@ async function updateResult(req, res) {
   if (dateText) update.dateText = String(dateText);
   if (mlPick) update.mlPick = String(mlPick);
   if (mlPickLabel) update.mlPickLabel = String(mlPickLabel);
+  if (Number.isFinite(Number(liveCorners))) update.liveCorners = Number(liveCorners);
+  if (Array.isArray(signalLines)) update.signalLines = signalLines.map(String).filter(Boolean).slice(0, 10);
 
   await db.collection("sinais").doc(String(id)).update(update);
 
