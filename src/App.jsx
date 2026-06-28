@@ -178,6 +178,10 @@ function getSignalSettlement(signal, game) {
   const totalGoals = getGameTotalGoals(game);
   const finished = isFinishedGame(game);
   const corners = Number(game.liveCorners || 0);
+  const scoreParts = String(game.scoreText || "").split("x").map((part) => Number(part.trim()));
+  const mlResult = scoreParts.length === 2 && scoreParts.every(Number.isFinite)
+    ? (scoreParts[0] > scoreParts[1] ? "home" : scoreParts[1] > scoreParts[0] ? "away" : "draw")
+    : "";
 
   if (market.includes("over05") || market.includes("+0.5")) {
     if (totalGoals >= 1) return "green";
@@ -202,6 +206,11 @@ function getSignalSettlement(signal, game) {
   if (market.includes("corner") || market.includes("escanteio")) {
     if (corners >= 9) return "green";
     return finished ? "red" : "";
+  }
+
+  if (market === "ml" || market.includes("moneyline")) {
+    if (!finished || !signal.mlPick || !mlResult) return "";
+    return signal.mlPick === mlResult ? "green" : "red";
   }
 
   return "";
@@ -305,7 +314,9 @@ export default function App() {
       const settlement = {
         scoreText: game.scoreText || signal.scoreText || "",
         liveStatus: game.liveStatus || signal.liveStatus || "",
-        dateText: game.dateText || signal.dateText || ""
+        dateText: game.dateText || signal.dateText || "",
+        mlPick: game.mlPick || signal.mlPick || "",
+        mlPickLabel: game.mlPickLabel || signal.mlPickLabel || ""
       };
       updateSignalResult(signal.id, result, settlement)
         .then((payload) => {
@@ -416,7 +427,8 @@ function MarketNav({ selectedMarket, setSelectedMarket, marketCounts, selectedPa
     ["over15", "+1.5 gols", marketCounts.over15 || 0],
     ["over25", "+2.5 gols", marketCounts.over25 || 0],
     ["under25", "Under 2.5", marketCounts.under25 || 0],
-    ["corners", "Escanteios", marketCounts.corners || 0]
+    ["corners", "Escanteios", marketCounts.corners || 0],
+    ["ml", "ML", marketCounts.ml || 0]
   ];
 
   return (

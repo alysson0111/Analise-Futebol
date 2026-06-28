@@ -32,6 +32,8 @@ function cleanSignal(input) {
     league: String(input.league || ""),
     market: String(analysis.mercado || input.market || ""),
     marketLabel: String(analysis.label || input.marketLabel || ""),
+    mlPick: String(analysis.mlPick || input.mlPick || ""),
+    mlPickLabel: String(analysis.mlPickLabel || input.mlPickLabel || ""),
     odd: Number(analysis.odd || input.odd || 0),
     confidence: Number(analysis.confianca || input.confidence || 0),
     scoreText: String(input.scoreText || ""),
@@ -64,6 +66,10 @@ function getSignalSettlement(signal, game) {
   const totalGoals = Number.isFinite(Number(game.totalGoals)) ? Number(game.totalGoals) : parseScoreTotal(game.scoreText);
   const finished = FINISHED_STATUSES.has(String(game.apiStatus || "").toUpperCase());
   const corners = Number(game.liveCorners || 0);
+  const [homeGoals, awayGoals] = String(game.scoreText || "").split("x").map((part) => Number(part.trim()));
+  const mlResult = Number.isFinite(homeGoals) && Number.isFinite(awayGoals)
+    ? (homeGoals > awayGoals ? "home" : awayGoals > homeGoals ? "away" : "draw")
+    : "";
 
   if (market.includes("over05") || market.includes("+0.5")) {
     if (totalGoals >= 1) return "green";
@@ -88,6 +94,11 @@ function getSignalSettlement(signal, game) {
   if (market.includes("corner") || market.includes("escanteio")) {
     if (corners >= 9) return "green";
     return finished ? "red" : "";
+  }
+
+  if (market === "ml" || market.includes("moneyline")) {
+    if (!finished || !signal.mlPick || !mlResult) return "";
+    return signal.mlPick === mlResult ? "green" : "red";
   }
 
   return "";
@@ -214,7 +225,7 @@ async function saveSignal(req, res) {
 
 async function updateResult(req, res) {
   const db = getDb();
-  const { id, result, scoreText, liveStatus, dateText } = readBody(req);
+  const { id, result, scoreText, liveStatus, dateText, mlPick, mlPickLabel } = readBody(req);
   if (!id || !["green", "red", "pendente"].includes(result)) {
     return send(res, 400, { error: "Resultado invalido." });
   }
@@ -228,6 +239,8 @@ async function updateResult(req, res) {
   if (scoreText) update.scoreText = String(scoreText);
   if (liveStatus) update.liveStatus = String(liveStatus);
   if (dateText) update.dateText = String(dateText);
+  if (mlPick) update.mlPick = String(mlPick);
+  if (mlPickLabel) update.mlPickLabel = String(mlPickLabel);
 
   await db.collection("sinais").doc(String(id)).update(update);
 

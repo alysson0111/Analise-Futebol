@@ -3,13 +3,15 @@ import { over15 } from "./over15.js";
 import { over25 } from "./over25.js";
 import { under25 } from "./under25.js";
 import { corners } from "./corners.js";
+import { ml } from "./ml.js";
 
 export const markets = {
   over05,
   over15,
   over25,
   under25,
-  corners
+  corners,
+  ml
 };
 
 export function getMarketLabel(market) {
@@ -36,6 +38,8 @@ export function analisarMercado(jogo, mercadoSelecionado = "all") {
     dadosJogo,
     entrada,
     grade: jogo.grade || "",
+    mlPick: jogo.mlPick || "",
+    mlPickLabel: jogo.mlPickLabel || "",
     linhas: jogo.signals || []
   };
 }

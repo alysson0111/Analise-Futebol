@@ -1,11 +1,12 @@
-const MARKETS = ["over05", "over15", "over25", "under25", "corners"];
+const MARKETS = ["over05", "over15", "over25", "under25", "corners", "ml"];
 
 const MARKET_LABELS = {
   over05: "+0.5 gols",
   over15: "+1.5 gols",
   over25: "+2.5 gols",
   under25: "Under 2.5",
-  corners: "Escanteios"
+  corners: "Escanteios",
+  ml: "ML"
 };
 
 function asNumber(value, fallback = 0) {
@@ -39,6 +40,50 @@ function result(game, patch, checks) {
     scannerChecks: checks,
     stats: summary(checks)
   };
+}
+
+function mlLabel(pick, game) {
+  if (pick === "home") return `Casa (${game.home})`;
+  if (pick === "away") return `Fora (${game.away})`;
+  if (pick === "draw") return "Empate";
+  return "-";
+}
+
+function pickFromPrediction(prediction, probabilities = []) {
+  if (prediction === "1") return "home";
+  if (prediction === "2") return "away";
+  if (String(prediction).toUpperCase() === "X") return "draw";
+
+  const values = probabilities.map((value) => asNumber(value));
+  if (values.length >= 3 && Math.max(...values) > 0) {
+    const max = Math.max(...values);
+    const index = values.indexOf(max);
+    return index === 0 ? "home" : index === 1 ? "draw" : "away";
+  }
+
+  return "";
+}
+
+function scanMl(game) {
+  const probabilities = Array.isArray(game.mlProbabilities) ? game.mlProbabilities.map((value) => asNumber(value)) : [];
+  const pick = game.mlPick || pickFromPrediction(game.mlPrediction, probabilities);
+  const confidence = probabilities.length >= 3 ? Math.max(...probabilities) : asNumber(game.mlConfidence);
+  const hasPrediction = Boolean(pick);
+  const passed = hasPrediction && confidence >= 55;
+  const checks = [
+    item("Vencedor previsto", hasPrediction, mlLabel(pick, game), hasPrediction),
+    item("Probabilidade ML >= 55%", confidence >= 55, confidence ? `${Math.round(confidence)}%` : "indisponivel", Boolean(confidence)),
+    item("Base de gols +2.5", game.mlAvgGoals > 0, game.mlAvgGoals ? `${game.mlAvgGoals.toFixed(2)} gols` : "indisponivel", Boolean(game.mlAvgGoals))
+  ];
+
+  return result(game, {
+    confidence: passed ? Math.round(confidence) : 0,
+    odd: game.mlOdd || game.odd || 0,
+    status: passed ? "Entrada" : "Observar",
+    mlPick: pick,
+    mlPickLabel: mlLabel(pick, game),
+    generatedSignals: passed ? [`ML ${mlLabel(pick, game)}`] : []
+  }, checks);
 }
 
 function scanOver05(game) {
@@ -247,6 +292,12 @@ function normalizeFixture(row) {
     liveShots,
     liveShotsOnTarget,
     source,
+    mlPrediction: row.mlPrediction || row.forebetPrediction || "",
+    mlProbabilities: row.mlProbabilities || row.forebetProbabilities || [],
+    mlConfidence: asNumber(row.mlConfidence),
+    mlAvgGoals: asNumber(row.mlAvgGoals || row.forebetAvgGoals || row.avgGoalsTotal || row.mediaGolsConjunta || row.averageGoalsTotal),
+    mlPick: row.mlPick || "",
+    mlOdd: getMarketOdd(row, ["mlOdd", "moneylineOdd", "oddMl"], ["home", "draw", "away"]),
     dadosJogo: buildGameData({ totalGoals, liveCorners, liveShots, liveShotsOnTarget, elapsed, apiStatus, hasLiveStats }),
     odd: 0,
     bttsPercent: percent(row.bothTeamsScorePercent || row.bttsPercent || row.ambosMarcamPercentual),
@@ -290,7 +341,8 @@ export function analyzeFixtures(payload) {
       if (market === "over15") return scanOver15(game);
       if (market === "over25") return scanOver25(game);
       if (market === "under25") return scanUnder25(game);
-      return scanCorners(game);
+      if (market === "corners") return scanCorners(game);
+      return scanMl(game);
     });
   });
 }
@@ -312,6 +364,8 @@ export function publicGame(game) {
     liveShots: game.liveShots,
     liveShotsOnTarget: game.liveShotsOnTarget,
     source: game.source,
+    mlPick: game.mlPick || "",
+    mlPickLabel: game.mlPickLabel || "",
     dadosJogo: game.dadosJogo || [],
     market: game.market,
     marketLabel: game.marketLabel,

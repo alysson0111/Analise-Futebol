@@ -7,7 +7,8 @@ const MARKET_LABELS = {
   over05: "+0.5 gols",
   over15: "+1.5 gols",
   over25: "+2.5 gols",
-  corners: "Escanteios"
+  corners: "Escanteios",
+  ml: "ML"
 };
 
 function send(res, status, body) {
@@ -103,6 +104,28 @@ function confidenceFromCorners(prediction) {
   const overProb = Number(prediction.overProb || 0);
   const avgCorners = Number(prediction.avgCorners || 0);
   return Math.max(62, Math.min(92, Math.round(54 + overProb * 0.32 + Math.max(0, avgCorners - 9.5) * 5)));
+}
+
+function winnerFromScore(score) {
+  const [home, away] = String(score || "").split("-").map((part) => Number(part.trim()));
+  if (!Number.isFinite(home) || !Number.isFinite(away)) return "";
+  if (home > away) return "home";
+  if (away > home) return "away";
+  return "draw";
+}
+
+function mlLabel(pick, game) {
+  if (pick === "home") return `Casa (${game.home})`;
+  if (pick === "away") return `Fora (${game.away})`;
+  if (pick === "draw") return "Empate";
+  return "-";
+}
+
+function confidenceFromMl(prediction) {
+  const pick = winnerFromScore(prediction.correctScore);
+  const avgGoals = Number(prediction.avgGoals || 0);
+  const base = pick === "draw" ? 62 : 68;
+  return Math.max(60, Math.min(88, Math.round(base + Math.max(0, avgGoals - 2) * 5)));
 }
 
 function parseForebetGoals(markdown) {
@@ -207,6 +230,17 @@ function applyForebet(games, goalPredictions, cornerPredictions) {
 
   for (const game of games || []) {
     const sourceId = String(game.sourceId || "");
+    if (!sourceId || game.market !== "ml") continue;
+
+    const prediction = findPrediction(game, goalPredictions);
+    const mlPick = winnerFromScore(prediction?.correctScore);
+    if (!prediction || !mlPick) continue;
+
+    picks.set(`${sourceId}-ml`, { market: "ml", prediction, type: "ml", mlPick });
+  }
+
+  for (const game of games || []) {
+    const sourceId = String(game.sourceId || "");
     if (!sourceId || sourceMarkets.get(sourceId)?.has("corners")) continue;
 
     const prediction = findPrediction(game, cornerPredictions);
@@ -223,6 +257,26 @@ function applyForebet(games, goalPredictions, cornerPredictions) {
     if (!pick) return game;
 
     const { prediction } = pick;
+    if (pick.type === "ml") {
+      const confidence = confidenceFromMl(prediction);
+      return {
+        ...game,
+        marketLabel: MARKET_LABELS.ml,
+        confidence,
+        status: confidence >= 60 ? "Entrada" : "Observar",
+        odd: game.odd || 0,
+        mlPick: pick.mlPick,
+        mlPickLabel: mlLabel(pick.mlPick, game),
+        signals: [`ML ${mlLabel(pick.mlPick, game)}`],
+        stats: [
+          "FOREBET | Mercado | ML",
+          `FOREBET | Vencedor previsto | ${mlLabel(pick.mlPick, game)}`,
+          `FOREBET | Placar previsto | ${prediction.correctScore}`,
+          `FOREBET | Base +2.5 media gols | ${prediction.avgGoals.toFixed(2)}`
+        ]
+      };
+    }
+
     if (pick.type === "corners") {
       return {
         ...game,

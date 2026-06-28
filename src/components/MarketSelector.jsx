@@ -7,6 +7,7 @@ export default function MarketSelector({ value, onChange }) {
       <option value="over25">+2.5 gols</option>
       <option value="under25">Under 2.5</option>
       <option value="corners">Escanteios</option>
+      <option value="ml">ML</option>
     </select>
   );
 }
