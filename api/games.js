@@ -152,6 +152,7 @@ function goalGame(prediction, date) {
   return {
     ...game,
     confidence: confidenceFromGoals(prediction),
+    signals: [marketLabel(market)],
     stats: [
       `FOREBET | Mercado | ${marketLabel(market)}`,
       `FOREBET | Previsao | ${prediction.side} ${Number(prediction.line || 2.5).toFixed(2)}`,

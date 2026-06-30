@@ -13,10 +13,12 @@ function isCornerSignal(signal) {
   return market.includes("corner") || market.includes("escanteio");
 }
 
-function getCornerSignalText(signal) {
-  if (!isCornerSignal(signal)) return "-";
-  const lines = Array.isArray(signal.signalLines) && signal.signalLines.length ? signal.signalLines : DEFAULT_CORNER_LINES;
-  return lines.join(", ");
+function getSignalText(signal) {
+  const lines = Array.isArray(signal.signalLines) ? signal.signalLines.filter(Boolean) : [];
+  if (lines.length) return lines.join(", ");
+  if (isCornerSignal(signal)) return DEFAULT_CORNER_LINES.join(", ");
+  if (signal.market === "ml") return signal.mlPickLabel ? `ML ${signal.mlPickLabel}` : "ML";
+  return signal.marketLabel || getMarketLabel(signal.market) || "-";
 }
 
 function getCornerCount(signal) {
@@ -100,14 +102,14 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
   const resultLabel = { green: "Green", red: "Red", pendente: "Pendente" };
 
   function exportCsv() {
-    const header = ["data_hora", "jogo", "liga", "resultado_final", "mercado", "sinal_escanteio", "escanteios_jogo", "odd", "confianca", "resultado", "scanner"];
+    const header = ["data_hora", "jogo", "liga", "resultado_final", "mercado", "sinal", "escanteios_jogo", "odd", "confianca", "resultado", "scanner"];
     const rows = filteredSignals.map((signal) => [
       signal.createdAtText || "",
       `${signal.home} x ${signal.away}`,
       signal.league || "",
       signal.scoreText || "",
       signal.marketLabel || signal.market || "",
-      getCornerSignalText(signal),
+      getSignalText(signal),
       getCornerCount(signal),
       signal.odd || "",
       `${Math.round(Number(signal.confidence || 0))}%`,
@@ -134,7 +136,7 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
         <td>${signal.league || "-"}</td>
         <td>${signal.scoreText || "-"}</td>
         <td>${signal.marketLabel || signal.market}</td>
-        <td>${getCornerSignalText(signal)}</td>
+        <td>${getSignalText(signal)}</td>
         <td>${getCornerCount(signal)}</td>
         <td>${currencyOdd(signal.odd)}</td>
         <td>${Math.round(Number(signal.confidence || 0))}%</td>
@@ -158,7 +160,7 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
           <h1>Relatorio de sinais</h1>
           <p>Mercado: ${selectedMarketLabel}</p>
           <table>
-            <thead><tr><th>Data/Hora</th><th>Jogo</th><th>Liga</th><th>Resultado final</th><th>Mercado</th><th>Sinal escanteio</th><th>Escanteios jogo</th><th>Odd</th><th>Confianca</th><th>Resultado</th></tr></thead>
+            <thead><tr><th>Data/Hora</th><th>Jogo</th><th>Liga</th><th>Resultado final</th><th>Mercado</th><th>Sinal</th><th>Escanteios jogo</th><th>Odd</th><th>Confianca</th><th>Resultado</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </body>
@@ -208,7 +210,7 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
                 <th>Liga</th>
                 <th>Resultado final</th>
                 <th>Mercado</th>
-                <th>Sinal escanteio</th>
+                <th>Sinal</th>
                 <th>Escanteios jogo</th>
                 <th>Odd</th>
                 <th>Confianca</th>
@@ -225,7 +227,7 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
                   <td>{signal.league || "-"}</td>
                   <td>{signal.scoreText || "-"}</td>
                   <td>{signal.marketLabel || signal.market}</td>
-                  <td>{getCornerSignalText(signal)}</td>
+                  <td>{getSignalText(signal)}</td>
                   <td>{getCornerCount(signal)}</td>
                   <td>{currencyOdd(signal.odd)}</td>
                   <td>{Math.round(Number(signal.confidence || 0))}%</td>
