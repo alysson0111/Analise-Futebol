@@ -108,6 +108,7 @@ function mergeLivescoreWithTips(livescoreRows, tipRows) {
       teams: row.teams,
       league: row.league,
       goals: tip.goals || row.goals,
+      displayTime: row.displayTime,
       liveStatus: row.liveStatus,
       source: "Forebet Livescore"
     };
