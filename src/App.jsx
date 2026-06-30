@@ -222,7 +222,7 @@ export default function App() {
   const [selectedMarket, setSelectedMarket] = useState("all");
   const [dateStart, setDateStart] = useState(today);
   const [dateEnd, setDateEnd] = useState(today);
-  const [liveInterval, setLiveInterval] = useState(60000);
+  const [liveInterval, setLiveInterval] = useState(15000);
   const [filters, setFilters] = useState({ league: "all", market: "all", minConfidence: 0, minOdd: 0, search: "", mostrarApenasAprovados: false });
   const [signals, setSignals] = useState([]);
   const [bankStatus, setBankStatus] = useState("Servidor conectado ao Firestore pela API.");

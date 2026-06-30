@@ -2,8 +2,11 @@ import { analyzeFixtures, publicGame } from "./scanner.js";
 
 const FOREBET_LIVE_URL = "https://www.forebet.com/en/live-football-tips";
 const FOREBET_LIVESCORE_URL = "https://www.forebet.com/en/livescore";
-const FOREBET_READER_URL = `https://r.jina.ai/http://${FOREBET_LIVE_URL}`;
-const FOREBET_LIVESCORE_READER_URL = `https://r.jina.ai/http://${FOREBET_LIVESCORE_URL}`;
+
+function forebetReaderUrl(url) {
+  const separator = url.includes("?") ? "&" : "?";
+  return `https://r.jina.ai/http://${url}${separator}_=${Date.now()}`;
+}
 
 function asNumber(value, fallback = 0) {
   const number = Number(String(value ?? "").replace(",", "."));
@@ -317,8 +320,8 @@ function addForebetStats(game, source) {
 export async function fetchForebetLiveGames() {
   const headers = { "User-Agent": "Mozilla/5.0 Analise-Futebol/1.0" };
   const [liveScoreResponse, tipsResponse] = await Promise.all([
-    fetch(FOREBET_LIVESCORE_READER_URL, { headers }),
-    fetch(FOREBET_READER_URL, { headers })
+    fetch(forebetReaderUrl(FOREBET_LIVESCORE_URL), { headers }),
+    fetch(forebetReaderUrl(FOREBET_LIVE_URL), { headers })
   ]);
 
   if (!liveScoreResponse.ok) throw new Error(`Forebet livescore retornou ${liveScoreResponse.status}.`);

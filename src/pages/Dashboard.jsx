@@ -82,6 +82,8 @@ export function SearchBar({ dateStart, setDateStart, dateEnd, setDateEnd, liveIn
       <div className="field">
         <label htmlFor="liveInterval">Ao vivo</label>
         <select id="liveInterval" value={liveInterval} onChange={(event) => setLiveInterval(Number(event.target.value))}>
+          <option value="10000">10 segundos</option>
+          <option value="15000">15 segundos</option>
           <option value="30000">30 segundos</option>
           <option value="60000">60 segundos</option>
           <option value="120000">2 minutos</option>
