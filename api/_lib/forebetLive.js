@@ -26,10 +26,11 @@ function parseAmericanDate(dateText, timeText) {
   const match = String(dateText || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!match) return new Date();
 
-  const [, first, second, year] = match;
-  const day = Number(first) > 12 ? first : second;
-  const month = Number(first) > 12 ? second : first;
   const timeMatch = String(timeText || "").match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i);
+  const [, first, second, year] = match;
+  const hasAmPm = Boolean(timeMatch?.[3]);
+  const day = hasAmPm ? second : first;
+  const month = hasAmPm ? first : second;
   let hour = timeMatch ? Number(timeMatch[1]) : 0;
   const minute = timeMatch ? Number(timeMatch[2]) : 0;
   const suffix = timeMatch?.[3] ? timeMatch[3].toUpperCase() : "";
@@ -48,6 +49,69 @@ function splitTeams(teamText) {
     home: words.slice(0, splitAt).join(" "),
     away: words.slice(splitAt).join(" ")
   };
+}
+
+function normalizeTeam(value) {
+  return cleanLine(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(fc|cf|sc|ac|ec|club|de|do|da|the)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function teamScore(left, right) {
+  const a = normalizeTeam(left);
+  const b = normalizeTeam(right);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.includes(b) || b.includes(a)) return 0.9;
+
+  const aTokens = new Set(a.split(" ").filter((token) => token.length > 2));
+  const bTokens = new Set(b.split(" ").filter((token) => token.length > 2));
+  if (!aTokens.size || !bTokens.size) return 0;
+  const hits = [...aTokens].filter((token) => bTokens.has(token)).length;
+  return hits / Math.max(aTokens.size, bTokens.size);
+}
+
+function findMatchingTip(livescoreRow, tipRows) {
+  let best = null;
+  let bestScore = 0;
+
+  for (const tip of tipRows) {
+    const homeScore = teamScore(livescoreRow.teams?.home?.name, tip.teams?.home?.name);
+    const awayScore = teamScore(livescoreRow.teams?.away?.name, tip.teams?.away?.name);
+    const score = (homeScore + awayScore) / 2;
+    if (score > bestScore) {
+      best = tip;
+      bestScore = score;
+    }
+  }
+
+  return bestScore >= 0.55 ? best : null;
+}
+
+function mergeLivescoreWithTips(livescoreRows, tipRows) {
+  return livescoreRows.map((row) => {
+    const tip = findMatchingTip(row, tipRows);
+    if (!tip) return row;
+
+    return {
+      ...tip,
+      fixture: {
+        ...tip.fixture,
+        date: row.fixture?.date || tip.fixture?.date,
+        status: row.fixture?.status || tip.fixture?.status
+      },
+      teams: row.teams,
+      league: row.league,
+      goals: tip.goals || row.goals,
+      liveStatus: row.liveStatus,
+      source: "Forebet Livescore"
+    };
+  });
 }
 
 function extractLeague(beforeMatch) {
@@ -91,7 +155,7 @@ function parseBrazilDate(dateText) {
   const match = String(dateText || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!match) return new Date();
   const [, day, month, year] = match;
-  return new Date(`${year}-${month}-${day}T00:00:00Z`);
+  return new Date(`${year}-${month}-${day}T12:00:00Z`);
 }
 
 function parseLiveScoreStatus(value) {
@@ -152,6 +216,7 @@ function parseLivescoreMarkdown(markdown) {
       forebetPrediction: "",
       forebetProbabilities: [0, 0, 0],
       forebetAvgGoals: 0,
+      displayTime: "--:--",
       liveStatus: status.liveStatus,
       source: "Forebet Livescore"
     });
@@ -250,16 +315,18 @@ function addForebetStats(game, source) {
 
 export async function fetchForebetLiveGames() {
   const headers = { "User-Agent": "Mozilla/5.0 Analise-Futebol/1.0" };
-  const response = await fetch(FOREBET_READER_URL, { headers });
+  const [liveScoreResponse, tipsResponse] = await Promise.all([
+    fetch(FOREBET_LIVESCORE_READER_URL, { headers }),
+    fetch(FOREBET_READER_URL, { headers })
+  ]);
 
-  if (!response.ok) throw new Error(`Forebet retornou ${response.status}.`);
-  const markdown = await response.text();
-  let rows = parseLiveMarkdown(markdown).filter((row) => row.fixture?.status?.short !== "NS");
-  if (!rows.length) {
-    const liveScoreResponse = await fetch(FOREBET_LIVESCORE_READER_URL, { headers });
-    if (!liveScoreResponse.ok) throw new Error(`Forebet livescore retornou ${liveScoreResponse.status}.`);
-    rows = parseLivescoreMarkdown(await liveScoreResponse.text());
+  if (!liveScoreResponse.ok) throw new Error(`Forebet livescore retornou ${liveScoreResponse.status}.`);
+  const livescoreRows = parseLivescoreMarkdown(await liveScoreResponse.text());
+  let tipRows = [];
+  if (tipsResponse.ok) {
+    tipRows = parseLiveMarkdown(await tipsResponse.text()).filter((row) => row.fixture?.status?.short !== "NS");
   }
+  const rows = livescoreRows.length ? mergeLivescoreWithTips(livescoreRows, tipRows) : tipRows;
   const games = analyzeFixtures({ response: rows }).map((game) => {
     const source = rows.find((row) => String(row.fixture.id) === String(game.sourceId));
     return addForebetStats(publicGame({

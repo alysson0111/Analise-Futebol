@@ -280,7 +280,7 @@ function normalizeFixture(row) {
     home: row.teams?.home?.name || "Mandante",
     away: row.teams?.away?.name || "Visitante",
     league: row.league?.name || "Liga",
-    time: kickoff && !Number.isNaN(kickoff.getTime()) ? kickoff.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "--:--",
+    time: row.displayTime || (kickoff && !Number.isNaN(kickoff.getTime()) ? kickoff.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "--:--"),
     dateText: kickoff && !Number.isNaN(kickoff.getTime()) ? kickoff.toLocaleDateString("pt-BR") : "-",
     liveStatus: elapsed ? `${elapsed}'` : apiStatus || "",
     apiStatus: apiStatus || "",
