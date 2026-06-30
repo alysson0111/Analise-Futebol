@@ -1,9 +1,5 @@
-import { analyzeFixtures, publicGame } from "./_lib/scanner.js";
 import { fetchForebetLiveGames } from "./_lib/forebetLive.js";
-
-const API_BASE = "https://v3.football.api-sports.io/fixtures";
-const API_STATISTICS = "https://v3.football.api-sports.io/fixtures/statistics";
-const API_ODDS = "https://v3.football.api-sports.io/odds";
+import { fetchForebetPredictions } from "./forebet-analysis.js";
 
 function send(res, status, body) {
   res.statusCode = status;
@@ -24,66 +20,207 @@ function dateRange(start, end) {
 
   const days = [];
   const current = new Date(startDate);
-  while (current <= endDate) {
+  while (current <= endDate && days.length < 7) {
     days.push(current.toISOString().slice(0, 10));
     current.setUTCDate(current.getUTCDate() + 1);
   }
 
-  if (days.length > 31) throw new Error("Use no maximo 31 dias por busca.");
   return days;
 }
 
-async function fetchApi(path, token) {
-  const response = await fetch(`${API_BASE}${path}`, {
-    headers: { "x-apisports-key": token }
-  });
+function getSaoPauloDate() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
 
-  if (!response.ok) {
-    throw new Error(`API-Football retornou ${response.status}.`);
+function extractSourceId(url, fallback) {
+  const match = String(url || "").match(/-(\d+)(?:\?|$)/);
+  return match ? match[1] : fallback;
+}
+
+function splitTeams(teamText) {
+  const words = String(teamText || "").trim().split(/\s+/).filter(Boolean);
+  if (words.length <= 1) return { home: teamText || "Mandante", away: "Visitante" };
+  const splitAt = Math.max(1, Math.floor(words.length / 2));
+  return {
+    home: words.slice(0, splitAt).join(" "),
+    away: words.slice(splitAt).join(" ")
+  };
+}
+
+function dateTextFromKickoff(kickoffText, fallbackDate) {
+  const match = String(kickoffText || "").match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (!match) {
+    const [, year, month, day] = String(fallbackDate || "").match(/^(\d{4})-(\d{2})-(\d{2})$/) || [];
+    return year ? `${day}/${month}/${year}` : "";
+  }
+  const [, day, month, year] = match;
+  return `${day}/${month}/${year}`;
+}
+
+function timeFromKickoff(kickoffText) {
+  return String(kickoffText || "").match(/(\d{2}:\d{2})/)?.[1] || "--:--";
+}
+
+function confidenceFromGoals(prediction) {
+  const overProb = Number(prediction.overProb || 0);
+  const avgGoals = Number(prediction.avgGoals || 0);
+  return Math.max(62, Math.min(92, Math.round(56 + overProb * 0.28 + Math.max(0, avgGoals - 2.5) * 8)));
+}
+
+function confidenceFromCorners(prediction) {
+  const overProb = Number(prediction.overProb || 0);
+  const avgCorners = Number(prediction.avgCorners || 0);
+  return Math.max(62, Math.min(92, Math.round(54 + overProb * 0.32 + Math.max(0, avgCorners - 9.5) * 5)));
+}
+
+function winnerFromScore(score) {
+  const [home, away] = String(score || "").split("-").map((part) => Number(part.trim()));
+  if (!Number.isFinite(home) || !Number.isFinite(away)) return "";
+  if (home > away) return "home";
+  if (away > home) return "away";
+  return "draw";
+}
+
+function mlLabel(pick, game) {
+  if (pick === "home") return `Casa (${game.home})`;
+  if (pick === "away") return `Fora (${game.away})`;
+  if (pick === "draw") return "Empate";
+  return "-";
+}
+
+function goalsMarket(prediction) {
+  if (prediction.side === "Under") return "under25";
+  const avgGoals = Number(prediction.avgGoals || 0);
+  if (avgGoals >= 2.8) return "over25";
+  if (avgGoals >= 1.8) return "over15";
+  return "over05";
+}
+
+function marketLabel(market) {
+  return {
+    over05: "+0.5 gols",
+    over15: "+1.5 gols",
+    over25: "+2.5 gols",
+    under25: "Under 2.5",
+    corners: "Escanteios",
+    ml: "ML"
+  }[market] || market;
+}
+
+function baseGame(prediction, market, date) {
+  const { home, away } = splitTeams(prediction.teamsText);
+  const sourceId = extractSourceId(prediction.url, `${home}-${away}-${prediction.kickoffText}-${market}`);
+  return {
+    key: `${sourceId}-${market}`,
+    sourceId,
+    home,
+    away,
+    league: "Forebet",
+    time: timeFromKickoff(prediction.kickoffText),
+    dateText: dateTextFromKickoff(prediction.kickoffText, date),
+    liveStatus: "Pre-jogo",
+    apiStatus: "NS",
+    scoreText: "0x0",
+    totalGoals: 0,
+    liveCorners: null,
+    liveShots: 0,
+    liveShotsOnTarget: 0,
+    source: "Forebet",
+    market,
+    marketLabel: marketLabel(market),
+    odd: 0,
+    status: "Entrada",
+    grade: "",
+    signals: [],
+    dadosJogo: [
+      "DADO | Fonte | Forebet",
+      `DADO | Horario | ${timeFromKickoff(prediction.kickoffText)}`
+    ]
+  };
+}
+
+function goalGame(prediction, date) {
+  const market = goalsMarket(prediction);
+  const game = baseGame(prediction, market, date);
+  return {
+    ...game,
+    confidence: confidenceFromGoals(prediction),
+    stats: [
+      `FOREBET | Mercado | ${marketLabel(market)}`,
+      `FOREBET | Previsao | ${prediction.side} ${Number(prediction.line || 2.5).toFixed(2)}`,
+      `FOREBET | Placar previsto | ${prediction.correctScore}`,
+      `FOREBET | Media de gols | ${Number(prediction.avgGoals || 0).toFixed(2)}`
+    ]
+  };
+}
+
+function mlGame(prediction, date) {
+  const game = baseGame(prediction, "ml", date);
+  const pick = winnerFromScore(prediction.correctScore);
+  const confidence = Math.max(60, Math.min(88, Math.round(68 + Math.max(0, Number(prediction.avgGoals || 0) - 2) * 5)));
+  return {
+    ...game,
+    confidence,
+    mlPick: pick,
+    mlPickLabel: mlLabel(pick, game),
+    signals: pick ? [`ML ${mlLabel(pick, game)}`] : [],
+    stats: [
+      "FOREBET | Mercado | ML",
+      `FOREBET | Vencedor previsto | ${mlLabel(pick, game)}`,
+      `FOREBET | Placar previsto | ${prediction.correctScore}`,
+      `FOREBET | Base media gols | ${Number(prediction.avgGoals || 0).toFixed(2)}`
+    ]
+  };
+}
+
+function cornerGame(prediction, date) {
+  const game = baseGame(prediction, "corners", date);
+  return {
+    ...game,
+    confidence: confidenceFromCorners(prediction),
+    signals: ["Over 8.5 escanteios", "Over 9.5 escanteios", "Over 10.5 escanteios"],
+    stats: [
+      "FOREBET | Mercado | Escanteios",
+      `FOREBET | Previsao | ${prediction.side} 9.5 cantos`,
+      `FOREBET | Cantos previstos | ${prediction.cornerPrediction}`,
+      `FOREBET | Media de cantos | ${Number(prediction.avgCorners || 0).toFixed(2)}`
+    ]
+  };
+}
+
+async function fetchForebetPeriodGames(start, end) {
+  const days = dateRange(start, end);
+  const settled = await Promise.allSettled(days.flatMap((date) => [
+    fetchForebetPredictions(date, "goals"),
+    fetchForebetPredictions(date, "corners")
+  ]));
+  const predictions = settled.flatMap((entry) => entry.status === "fulfilled" ? entry.value : []);
+  const games = [];
+
+  for (const prediction of predictions) {
+    if (prediction.type === "corners") {
+      if (prediction.side === "Over") games.push(cornerGame(prediction, prediction.date));
+      continue;
+    }
+
+    games.push(goalGame(prediction, prediction.date));
+    games.push(mlGame(prediction, prediction.date));
   }
 
-  return response.json();
-}
-
-function getRows(payload) {
-  return payload.response || [];
-}
-
-async function enrichLive(payload, token) {
-  await Promise.all(getRows(payload).map(async (row) => {
-    const fixtureId = row.fixture?.id;
-    if (!fixtureId) return;
-
-    try {
-      const response = await fetch(`${API_STATISTICS}?fixture=${fixtureId}`, {
-        headers: { "x-apisports-key": token }
-      });
-      if (!response.ok) return;
-      const stats = await response.json();
-      row.liveStats = getRows(stats);
-    } catch {
-      row.liveStats = [];
-    }
-  }));
-}
-
-async function enrichOdds(payload, token) {
-  const rows = getRows(payload).slice(0, 50);
-  await Promise.all(rows.map(async (row) => {
-    const fixtureId = row.fixture?.id;
-    if (!fixtureId) return;
-
-    try {
-      const response = await fetch(`${API_ODDS}?fixture=${fixtureId}`, {
-        headers: { "x-apisports-key": token }
-      });
-      if (!response.ok) return;
-      const odds = await response.json();
-      row.oddsPayload = getRows(odds);
-    } catch {
-      row.oddsPayload = [];
-    }
-  }));
+  return {
+    updatedAt: new Date().toISOString(),
+    count: new Set(games.map((game) => game.sourceId)).size,
+    marketRows: games.length,
+    source: "Forebet",
+    games
+  };
 }
 
 export default async function handler(req, res) {
@@ -91,34 +228,13 @@ export default async function handler(req, res) {
 
   try {
     const mode = req.query.mode === "live" ? "live" : "period";
-    if (mode === "live") {
-      const payload = await fetchForebetLiveGames();
-      return send(res, 200, payload);
-    }
+    if (mode === "live") return send(res, 200, await fetchForebetLiveGames());
 
-    const token = process.env.API_FOOTBALL_KEY;
-    if (!token) throw new Error("API_FOOTBALL_KEY nao configurada na Vercel.");
-
-    const payloads = [];
-
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getSaoPauloDate();
     const start = parseDate(req.query.start) || today;
     const end = parseDate(req.query.end) || start;
-    for (const day of dateRange(start, end)) {
-      const payload = await fetchApi(`?date=${day}`, token);
-      await enrichOdds(payload, token);
-      payloads.push(payload);
-    }
-
-    const fixtureCount = payloads.reduce((sum, payload) => sum + getRows(payload).length, 0);
-    const games = payloads.flatMap((payload) => analyzeFixtures(payload)).map(publicGame);
-    send(res, 200, {
-      updatedAt: new Date().toISOString(),
-      count: fixtureCount,
-      marketRows: games.length,
-      games
-    });
+    return send(res, 200, await fetchForebetPeriodGames(start, end));
   } catch (error) {
-    send(res, 500, { error: error.message || "Erro ao consultar jogos." });
+    send(res, 500, { error: error.message || "Erro ao consultar Forebet." });
   }
 }

@@ -1,7 +1,9 @@
 import { analyzeFixtures, publicGame } from "./scanner.js";
 
 const FOREBET_LIVE_URL = "https://www.forebet.com/en/live-football-tips";
-const FOREBET_READER_URL = `https://r.jina.ai/http://r.jina.ai/http://${FOREBET_LIVE_URL}`;
+const FOREBET_LIVESCORE_URL = "https://www.forebet.com/en/livescore";
+const FOREBET_READER_URL = `https://r.jina.ai/http://${FOREBET_LIVE_URL}`;
+const FOREBET_LIVESCORE_READER_URL = `https://r.jina.ai/http://${FOREBET_LIVESCORE_URL}`;
 
 function asNumber(value, fallback = 0) {
   const number = Number(String(value ?? "").replace(",", "."));
@@ -24,11 +26,13 @@ function parseAmericanDate(dateText, timeText) {
   const match = String(dateText || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!match) return new Date();
 
-  const [, month, day, year] = match;
-  const timeMatch = String(timeText || "").match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  const [, first, second, year] = match;
+  const day = Number(first) > 12 ? first : second;
+  const month = Number(first) > 12 ? second : first;
+  const timeMatch = String(timeText || "").match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i);
   let hour = timeMatch ? Number(timeMatch[1]) : 0;
   const minute = timeMatch ? Number(timeMatch[2]) : 0;
-  const suffix = timeMatch ? timeMatch[3].toUpperCase() : "AM";
+  const suffix = timeMatch?.[3] ? timeMatch[3].toUpperCase() : "";
   if (suffix === "PM" && hour < 12) hour += 12;
   if (suffix === "AM" && hour === 12) hour = 0;
 
@@ -74,13 +78,86 @@ function extractStatus(chunk) {
   const scoreIndex = lines.findIndex((line) => /^\d+\s*-\s*\d+/.test(line));
   const searchLines = scoreIndex > 0 ? lines.slice(0, scoreIndex).reverse() : lines.slice().reverse();
   const status = searchLines.find((line) => /^(HT|FT|Live Pen\.|\+?\d{1,3}'?|\d{1,3})$/i.test(line));
-  if (!status) return { elapsed: 0, apiStatus: "LIVE", liveStatus: "Live" };
+  if (!status) return { elapsed: 0, apiStatus: "NS", liveStatus: "Sem tempo" };
   if (/^HT$/i.test(status)) return { elapsed: 45, apiStatus: "HT", liveStatus: "HT" };
   if (/^FT$/i.test(status)) return { elapsed: 90, apiStatus: "FT", liveStatus: "FT" };
   if (/Live Pen\./i.test(status)) return { elapsed: 90, apiStatus: "PEN", liveStatus: "Penaltis" };
 
   const elapsed = asNumber(status.replace(/[^0-9]/g, ""));
   return { elapsed, apiStatus: "LIVE", liveStatus: elapsed ? `${elapsed}'` : "Live" };
+}
+
+function parseBrazilDate(dateText) {
+  const match = String(dateText || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return new Date();
+  const [, day, month, year] = match;
+  return new Date(`${year}-${month}-${day}T00:00:00Z`);
+}
+
+function parseLiveScoreStatus(value) {
+  const status = cleanLine(value);
+  if (/^\d{1,3}$/.test(status)) {
+    const elapsed = asNumber(status);
+    return { elapsed, apiStatus: "LIVE", liveStatus: `${elapsed}'`, isLive: true };
+  }
+  if (/^HT$/i.test(status)) return { elapsed: 45, apiStatus: "HT", liveStatus: "HT", isLive: true };
+  if (/^Pen\.?$/i.test(status)) return { elapsed: 90, apiStatus: "PEN", liveStatus: "Penaltis", isLive: true };
+  return { elapsed: 0, apiStatus: status, liveStatus: status, isLive: false };
+}
+
+function isScoreStatus(value) {
+  const status = cleanLine(value);
+  return /^(\d{1,3}|HT|FT|Pen\.?|Postp\.|Cancl\.|\d{1,2}:\d{2})$/i.test(status);
+}
+
+function isLeagueLine(value) {
+  const line = cleanLine(value);
+  if (!line || isScoreStatus(line)) return false;
+  if (/^(Livescore|Football predictions|June 2026|Featured match|Pick of the day|Top trends)$/i.test(line)) return false;
+  return line.includes(":") || line.startsWith("World:");
+}
+
+function parseLivescoreMarkdown(markdown) {
+  const lines = String(markdown || "").split("\n").map(cleanLine).filter(Boolean);
+  const rows = [];
+  let league = "Forebet Livescore";
+
+  for (let index = 0; index < lines.length - 2; index += 1) {
+    const line = lines[index];
+    if (isLeagueLine(line)) {
+      league = line;
+      continue;
+    }
+
+    const status = parseLiveScoreStatus(line);
+    if (!status.isLive) continue;
+
+    const home = lines[index + 1];
+    const away = lines[index + 2];
+    if (!home || !away || isScoreStatus(home) || isScoreStatus(away) || isLeagueLine(home) || isLeagueLine(away)) continue;
+
+    const date = parseBrazilDate(getSaoPauloDateText());
+    rows.push({
+      fixture: {
+        id: `${league}-${home}-${away}-${line}`,
+        date: date.toISOString(),
+        status: { elapsed: status.elapsed, short: status.apiStatus }
+      },
+      teams: {
+        home: { name: home },
+        away: { name: away }
+      },
+      league: { name: league },
+      goals: { home: 0, away: 0 },
+      forebetPrediction: "",
+      forebetProbabilities: [0, 0, 0],
+      forebetAvgGoals: 0,
+      liveStatus: status.liveStatus,
+      source: "Forebet Livescore"
+    });
+  }
+
+  return rows;
 }
 
 function extractPrediction(chunk) {
@@ -106,7 +183,7 @@ function parseLiveMarkdown(markdown) {
     .filter((index) => index > 0)
     .sort((a, b) => a - b)[0];
   const section = sectionEnd ? rawSection.slice(0, sectionEnd) : rawSection;
-  const matchPattern = /\[([^\]\n]+?\s+\d{2}\/\d{2}\/\d{4}\s+\d{1,2}:\d{2}\s+[AP]M)\]\((https:\/\/www\.forebet\.com\/en\/football\/matches\/[^)]+)\)/gi;
+  const matchPattern = /\[([^\]\n]+?\s+\d{2}\/\d{2}\/\d{4}\s+\d{1,2}:\d{2}(?:\s+[AP]M)?)\]\((https:\/\/www\.forebet\.com\/en\/football\/matches\/[^)]+)\)/gi;
   const matches = [...section.matchAll(matchPattern)];
 
   return matches.map((match, index) => {
@@ -114,7 +191,7 @@ function parseLiveMarkdown(markdown) {
     const next = matches[index + 1];
     const before = section.slice(Math.max(0, match.index - 180), match.index);
     const chunk = section.slice(match.index + match[0].length, next ? next.index : section.length);
-    const titleMatch = title.match(/^(.*?)\s+(\d{2}\/\d{2}\/\d{4})\s+(\d{1,2}:\d{2}\s+[AP]M)$/i);
+    const titleMatch = title.match(/^(.*?)\s+(\d{2}\/\d{2}\/\d{4})\s+(\d{1,2}:\d{2}(?:\s+[AP]M)?)$/i);
     const teamsText = titleMatch?.[1] || title;
     const dateText = titleMatch?.[2] || "";
     const timeText = titleMatch?.[3] || "";
@@ -152,8 +229,9 @@ function parseLiveMarkdown(markdown) {
 }
 
 function addForebetStats(game, source) {
+  const sourceName = source?.source === "Forebet Livescore" ? "Livescore" : "Ao vivo";
   const stats = [
-    `FOREBET | Fonte | Ao vivo`,
+    `FOREBET | Fonte | ${sourceName}`,
     `FOREBET | Previsao 1X2 | ${source?.forebetPrediction || "-"}`,
     `FOREBET | Probabilidades 1/X/2 | ${(source?.forebetProbabilities || []).join("/") || "-"}`,
     `FOREBET | Media de gols | ${Number(source?.forebetAvgGoals || 0).toFixed(2)}`
@@ -171,13 +249,17 @@ function addForebetStats(game, source) {
 }
 
 export async function fetchForebetLiveGames() {
-  const response = await fetch(FOREBET_READER_URL, {
-    headers: { "User-Agent": "Mozilla/5.0 Analise-Futebol/1.0" }
-  });
+  const headers = { "User-Agent": "Mozilla/5.0 Analise-Futebol/1.0" };
+  const response = await fetch(FOREBET_READER_URL, { headers });
 
   if (!response.ok) throw new Error(`Forebet retornou ${response.status}.`);
   const markdown = await response.text();
-  const rows = parseLiveMarkdown(markdown);
+  let rows = parseLiveMarkdown(markdown).filter((row) => row.fixture?.status?.short !== "NS");
+  if (!rows.length) {
+    const liveScoreResponse = await fetch(FOREBET_LIVESCORE_READER_URL, { headers });
+    if (!liveScoreResponse.ok) throw new Error(`Forebet livescore retornou ${liveScoreResponse.status}.`);
+    rows = parseLivescoreMarkdown(await liveScoreResponse.text());
+  }
   const games = analyzeFixtures({ response: rows }).map((game) => {
     const source = rows.find((row) => String(row.fixture.id) === String(game.sourceId));
     return addForebetStats(publicGame({

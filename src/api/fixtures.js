@@ -1,4 +1,4 @@
-import { apiJson } from "./apiFootball.js";
+import { apiJson } from "./serverApi.js";
 
 export function fetchLiveFixtures() {
   return apiJson("/api/games?mode=live");

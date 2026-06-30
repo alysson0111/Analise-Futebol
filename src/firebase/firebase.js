@@ -1,4 +1,4 @@
-import { apiJson } from "../api/apiFootball.js";
+import { apiJson } from "../api/serverApi.js";
 
 export function listSignals() {
   return apiJson("/api/signals");

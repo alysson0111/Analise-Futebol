@@ -262,7 +262,7 @@ function buildGameData({ totalGoals, liveCorners, liveShots, liveShotsOnTarget, 
 function normalizeFixture(row) {
   const kickoff = row.fixture?.date ? new Date(row.fixture.date) : null;
   const source = row.source || "";
-  const isForebetLive = source === "Forebet Live";
+  const isForebetLive = source === "Forebet Live" || source === "Forebet Livescore";
   const homeGoals = asNumber(row.goals?.home);
   const awayGoals = asNumber(row.goals?.away);
   const totalGoals = homeGoals + awayGoals;

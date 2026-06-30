@@ -1,4 +1,4 @@
-import { apiJson } from "./apiFootball.js";
+import { apiJson } from "./serverApi.js";
 
 export function analyzePrematchWithForebet(games, start, end) {
   return apiJson("/api/forebet-analysis", {

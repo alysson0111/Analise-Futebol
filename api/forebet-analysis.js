@@ -180,7 +180,7 @@ function parseForebetCorners(markdown) {
   return items;
 }
 
-async function fetchForebetPredictions(date, type = "goals") {
+export async function fetchForebetPredictions(date, type = "goals") {
   const response = await fetch(forebetReaderUrl(date, type), {
     headers: {
       "User-Agent": "Mozilla/5.0 Analise-Futebol/1.0"
