@@ -21,9 +21,12 @@ function getCornerSignalText(signal) {
 
 function getCornerCount(signal) {
   if (!isCornerSignal(signal)) return "-";
-  if (signal.liveCorners === null || signal.liveCorners === undefined || signal.liveCorners === "") return "-";
+  const status = String(signal.liveStatus || "").toUpperCase();
+  if (signal.liveCorners === null || signal.liveCorners === undefined || signal.liveCorners === "") {
+    return status === "NS" ? "Nao iniciou" : "Sem dado";
+  }
   const total = Number(signal.liveCorners);
-  return Number.isFinite(total) ? total : "-";
+  return Number.isFinite(total) ? total : "Sem dado";
 }
 
 export default function Dashboard(props) {
