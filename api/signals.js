@@ -37,6 +37,7 @@ function cleanSignal(input) {
   return {
     key: String(input.key || ""),
     sourceId: String(input.sourceId || ""),
+    source: String(input.source || ""),
     home: String(input.home || ""),
     away: String(input.away || ""),
     league: String(input.league || ""),
@@ -73,6 +74,50 @@ function getStatTotal(stats, type) {
   }, 0);
 }
 
+function normalizeTeamName(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(fc|cf|sc|ac|ec|club|de|do|da|the)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function teamSimilarity(left, right) {
+  const a = normalizeTeamName(left);
+  const b = normalizeTeamName(right);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.includes(b) || b.includes(a)) return 0.9;
+
+  const aTokens = new Set(a.split(" ").filter((token) => token.length > 2));
+  const bTokens = new Set(b.split(" ").filter((token) => token.length > 2));
+  if (!aTokens.size || !bTokens.size) return 0;
+  const hits = [...aTokens].filter((token) => bTokens.has(token)).length;
+  return hits / Math.max(aTokens.size, bTokens.size);
+}
+
+function parseSignalDate(signal) {
+  const raw = String(signal.dateText || signal.createdAtText || "");
+  const match = raw.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if (!match) return new Date().toISOString().slice(0, 10);
+  const [, day, month, year] = match;
+  return `${year}-${month}-${day}`;
+}
+
+function isForebetSignal(signal) {
+  const source = String(signal.source || "").toLowerCase();
+  const statsText = Array.isArray(signal.stats) ? signal.stats.join(" ").toLowerCase() : "";
+  return source.includes("forebet") || statsText.includes("forebet");
+}
+
+function isCornerSignal(signal) {
+  const market = normalizeMarketName(signal.market || signal.marketLabel);
+  return market.includes("corner") || market.includes("escanteio");
+}
+
 function getSignalSettlement(signal, game) {
   const market = normalizeMarketName(signal.market || signal.marketLabel);
   const totalGoals = Number.isFinite(Number(game.totalGoals)) ? Number(game.totalGoals) : parseScoreTotal(game.scoreText);
@@ -104,6 +149,7 @@ function getSignalSettlement(signal, game) {
   }
 
   if (market.includes("corner") || market.includes("escanteio")) {
+    if (game.liveCorners === null || game.liveCorners === undefined || game.liveCorners === "") return "";
     if (corners >= 9) return "green";
     return finished ? "red" : "";
   }
@@ -116,19 +162,62 @@ function getSignalSettlement(signal, game) {
   return "";
 }
 
-async function fetchFixtureState(sourceId, token) {
+async function fetchFixtureById(sourceId, token) {
   const response = await fetch(`${API_FIXTURES}?id=${encodeURIComponent(sourceId)}`, {
     headers: { "x-apisports-key": token }
   });
   if (!response.ok) return null;
 
   const payload = await response.json();
-  const row = payload.response?.[0];
-  if (!row) return null;
+  return payload.response?.[0] || null;
+}
+
+async function fetchFixturesByDate(date, token, cache) {
+  if (cache.has(date)) return cache.get(date);
+  const response = await fetch(`${API_FIXTURES}?date=${encodeURIComponent(date)}`, {
+    headers: { "x-apisports-key": token }
+  });
+  if (!response.ok) {
+    cache.set(date, []);
+    return [];
+  }
+
+  const payload = await response.json();
+  const rows = payload.response || [];
+  cache.set(date, rows);
+  return rows;
+}
+
+async function findFixtureByTeams(signal, token, cache) {
+  const date = parseSignalDate(signal);
+  const rows = await fetchFixturesByDate(date, token, cache);
+  let best = null;
+  let bestScore = 0;
+
+  for (const row of rows) {
+    const homeScore = teamSimilarity(signal.home, row.teams?.home?.name);
+    const awayScore = teamSimilarity(signal.away, row.teams?.away?.name);
+    const swappedHomeScore = teamSimilarity(signal.home, row.teams?.away?.name);
+    const swappedAwayScore = teamSimilarity(signal.away, row.teams?.home?.name);
+    const directScore = (homeScore + awayScore) / 2;
+    const swappedScore = (swappedHomeScore + swappedAwayScore) / 2;
+    const score = Math.max(directScore, swappedScore);
+
+    if (score > bestScore) {
+      best = row;
+      bestScore = score;
+    }
+  }
+
+  return bestScore >= 0.55 ? best : null;
+}
+
+async function fetchFixtureStats(fixtureId, token) {
+  if (!fixtureId) return [];
 
   let stats = [];
   try {
-    const statsResponse = await fetch(`${API_STATISTICS}?fixture=${encodeURIComponent(sourceId)}`, {
+    const statsResponse = await fetch(`${API_STATISTICS}?fixture=${encodeURIComponent(fixtureId)}`, {
       headers: { "x-apisports-key": token }
     });
     if (statsResponse.ok) {
@@ -139,6 +228,18 @@ async function fetchFixtureState(sourceId, token) {
     stats = [];
   }
 
+  return stats;
+}
+
+async function fetchFixtureState(signal, token, cache) {
+  const sourceId = String(signal.sourceId || "");
+  const shouldTrustSourceId = /^\d+$/.test(sourceId) && !isForebetSignal(signal);
+  let row = shouldTrustSourceId ? await fetchFixtureById(sourceId, token) : null;
+  if (!row) row = await findFixtureByTeams(signal, token, cache);
+  if (!row) return null;
+
+  const stats = await fetchFixtureStats(row.fixture?.id, token);
+  const liveCorners = stats.length ? getStatTotal(stats, "Corner Kicks") : null;
   const homeGoals = Number(row.goals?.home || 0);
   const awayGoals = Number(row.goals?.away || 0);
   const elapsed = Number(row.fixture?.status?.elapsed || 0);
@@ -150,7 +251,7 @@ async function fetchFixtureState(sourceId, token) {
     totalGoals: homeGoals + awayGoals,
     liveStatus: elapsed ? `${elapsed}'` : apiStatus,
     apiStatus,
-    liveCorners: getStatTotal(stats, "Corner Kicks"),
+    liveCorners,
     dateText: kickoff && !Number.isNaN(kickoff.getTime()) ? kickoff.toLocaleDateString("pt-BR") : ""
   };
 }
@@ -160,31 +261,38 @@ async function settleSignalsFromApi(db, signals) {
   if (!token) return signals;
 
   const pending = signals.filter((signal) => {
-    return signal.id && signal.result === "pendente" && /^\d+$/.test(String(signal.sourceId || ""));
+    const cornerMissing = isCornerSignal(signal) && !Number(signal.liveCorners);
+    return signal.id && (signal.result === "pendente" || cornerMissing);
   }).slice(0, 40);
 
   if (!pending.length) return signals;
 
   const updates = new Map();
+  const fixtureDateCache = new Map();
   for (const signal of pending) {
     try {
-      const game = await fetchFixtureState(signal.sourceId, token);
+      const game = await fetchFixtureState(signal, token, fixtureDateCache);
       if (!game) continue;
 
       const result = getSignalSettlement(signal, game);
-      if (!result) {
-        updates.set(signal.id, { ...signal, ...game });
-        continue;
-      }
-
-      const update = {
-        result,
+      const baseUpdate = {
         scoreText: game.scoreText,
         liveStatus: game.liveStatus,
         dateText: game.dateText || signal.dateText || "",
         liveCorners: game.liveCorners,
-        settledAtText: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
         updatedAt: now()
+      };
+
+      if (!result || signal.result !== "pendente") {
+        await db.collection("sinais").doc(String(signal.id)).update(baseUpdate);
+        updates.set(signal.id, { ...signal, ...baseUpdate });
+        continue;
+      }
+
+      const update = {
+        ...baseUpdate,
+        result,
+        settledAtText: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
       };
       await db.collection("sinais").doc(String(signal.id)).update(update);
       updates.set(signal.id, { ...signal, ...update });
