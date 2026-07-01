@@ -4,8 +4,7 @@ const FOREBET_LIVE_URL = "https://www.forebet.com/en/live-football-tips";
 const FOREBET_LIVESCORE_URL = "https://www.forebet.com/en/livescore";
 
 function forebetReaderUrl(url) {
-  const separator = url.includes("?") ? "&" : "?";
-  return `https://r.jina.ai/http://${url}${separator}_=${Date.now()}`;
+  return `https://r.jina.ai/http://${url}`;
 }
 
 function asNumber(value, fallback = 0) {
@@ -318,14 +317,21 @@ function addForebetStats(game, source) {
 }
 
 export async function fetchForebetLiveGames() {
-  const headers = { "User-Agent": "Mozilla/5.0 Analise-Futebol/1.0" };
+  const headers = {
+    "User-Agent": "Mozilla/5.0 Analise-Futebol/1.0",
+    "Cache-Control": "no-cache",
+    Pragma: "no-cache"
+  };
   const [liveScoreResponse, tipsResponse] = await Promise.all([
     fetch(forebetReaderUrl(FOREBET_LIVESCORE_URL), { headers }),
     fetch(forebetReaderUrl(FOREBET_LIVE_URL), { headers })
   ]);
 
-  if (!liveScoreResponse.ok) throw new Error(`Forebet livescore retornou ${liveScoreResponse.status}.`);
-  const livescoreRows = parseLivescoreMarkdown(await liveScoreResponse.text());
+  if (!liveScoreResponse.ok && !tipsResponse.ok) {
+    throw new Error(`Forebet livescore retornou ${liveScoreResponse.status}; tips retornou ${tipsResponse.status}.`);
+  }
+
+  const livescoreRows = liveScoreResponse.ok ? parseLivescoreMarkdown(await liveScoreResponse.text()) : [];
   let tipRows = [];
   if (tipsResponse.ok) {
     tipRows = parseLiveMarkdown(await tipsResponse.text()).filter((row) => row.fixture?.status?.short !== "NS");
