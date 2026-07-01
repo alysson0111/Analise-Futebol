@@ -180,8 +180,18 @@ function isScoreStatus(value) {
 function isLeagueLine(value) {
   const line = cleanLine(value);
   if (!line || isScoreStatus(line)) return false;
+  if (/[[\]|#]/.test(line)) return false;
   if (/^(Livescore|Football predictions|June 2026|Featured match|Pick of the day|Top trends)$/i.test(line)) return false;
   return line.includes(":") || line.startsWith("World:");
+}
+
+function isTeamLine(value) {
+  const line = cleanLine(value);
+  if (!line || isScoreStatus(line) || isLeagueLine(line)) return false;
+  if (/[[\]|#]/.test(line)) return false;
+  if (/\b(TABLE|OVERALL|HOME|AWAY|NEXT|WINS|DRAWS|LOSSES|POINTS)\b/i.test(line)) return false;
+  if (/^\d/.test(line) || line.length > 60) return false;
+  return /[A-Za-zÀ-ÿ]/.test(line);
 }
 
 function parseLivescoreMarkdown(markdown) {
@@ -201,7 +211,7 @@ function parseLivescoreMarkdown(markdown) {
 
     const home = lines[index + 1];
     const away = lines[index + 2];
-    if (!home || !away || isScoreStatus(home) || isScoreStatus(away) || isLeagueLine(home) || isLeagueLine(away)) continue;
+    if (!isTeamLine(home) || !isTeamLine(away)) continue;
 
     const date = parseBrazilDate(getSaoPauloDateText());
     rows.push({
