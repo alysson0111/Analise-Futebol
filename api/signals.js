@@ -197,6 +197,9 @@ async function settleSignalsFromForebet(db, signals) {
       const aCorners = aMarket.includes("corner") || aMarket.includes("escanteio") ? 1 : 0;
       const bCorners = bMarket.includes("corner") || bMarket.includes("escanteio") ? 1 : 0;
       if (aCorners !== bCorners) return aCorners - bCorners;
+      const aPartial = /^\d{1,3}'?$/.test(String(a.liveStatus || "")) ? 0 : 1;
+      const bPartial = /^\d{1,3}'?$/.test(String(b.liveStatus || "")) ? 0 : 1;
+      if (aPartial !== bPartial) return aPartial - bPartial;
       return (parsePtDateTime(a.dateText, a.stats)?.getTime() || 0) - (parsePtDateTime(b.dateText, b.stats)?.getTime() || 0);
     })
     .slice(0, 25);
