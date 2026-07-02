@@ -109,6 +109,8 @@ function shouldCheckForebetSettlement(signal) {
   const liveStatus = String(signal.liveStatus || "").toUpperCase().replace("'", "");
   const alreadyFinal = FINISHED_STATUSES.has(liveStatus);
   if (signal.result !== "pendente" && alreadyFinal) return false;
+  const checkedSeconds = Number(signal.settleCheckedAt?._seconds || 0);
+  if (checkedSeconds && Date.now() - checkedSeconds * 1000 < 2 * 60 * 60 * 1000) return false;
 
   const kickoff = parsePtDateTime(signal.dateText, signal.stats);
   if (!kickoff) return true;
@@ -211,10 +213,16 @@ async function settleSignalsFromForebet(db, signals) {
         Pragma: "no-cache"
       }
     });
-    if (!response.ok) return;
+    if (!response.ok) {
+      await db.collection("sinais").doc(String(signal.id)).update({ settleCheckedAt: now() });
+      return;
+    }
 
     const matchGame = parseForebetMatchScore(await response.text());
-    if (!matchGame) return;
+    if (!matchGame) {
+      await db.collection("sinais").doc(String(signal.id)).update({ settleCheckedAt: now() });
+      return;
+    }
 
     const market = normalizeMarketName(signal.market || signal.marketLabel);
     const canSettleMarket = !(market.includes("corner") || market.includes("escanteio"));
@@ -225,6 +233,7 @@ async function settleSignalsFromForebet(db, signals) {
     };
     const dbUpdate = {
       ...update,
+      settleCheckedAt: now(),
       updatedAt: now()
     };
     if (result !== "pendente") {
