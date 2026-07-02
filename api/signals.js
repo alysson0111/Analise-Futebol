@@ -189,7 +189,14 @@ function getSignalSettlement(signal, game) {
 async function settleSignalsFromForebet(db, signals) {
   const candidates = signals
     .filter(shouldCheckForebetSettlement)
-    .sort((a, b) => (parsePtDateTime(a.dateText, a.stats)?.getTime() || 0) - (parsePtDateTime(b.dateText, b.stats)?.getTime() || 0))
+    .sort((a, b) => {
+      const aMarket = normalizeMarketName(a.market || a.marketLabel);
+      const bMarket = normalizeMarketName(b.market || b.marketLabel);
+      const aCorners = aMarket.includes("corner") || aMarket.includes("escanteio") ? 1 : 0;
+      const bCorners = bMarket.includes("corner") || bMarket.includes("escanteio") ? 1 : 0;
+      if (aCorners !== bCorners) return aCorners - bCorners;
+      return (parsePtDateTime(a.dateText, a.stats)?.getTime() || 0) - (parsePtDateTime(b.dateText, b.stats)?.getTime() || 0);
+    })
     .slice(0, 25);
 
   if (!candidates.length) return signals;
