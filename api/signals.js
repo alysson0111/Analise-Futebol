@@ -105,8 +105,10 @@ function parsePtDateTime(dateText, stats = []) {
 }
 
 function shouldCheckForebetSettlement(signal) {
-  if (signal.result !== "pendente") return false;
   if (!forebetMatchUrl(signal)) return false;
+  const liveStatus = String(signal.liveStatus || "").toUpperCase().replace("'", "");
+  const alreadyFinal = FINISHED_STATUSES.has(liveStatus);
+  if (signal.result !== "pendente" && alreadyFinal) return false;
 
   const kickoff = parsePtDateTime(signal.dateText, signal.stats);
   if (!kickoff) return true;
@@ -118,8 +120,10 @@ function shouldCheckForebetSettlement(signal) {
 
 function parseForebetMatchScore(markdown) {
   const text = String(markdown || "");
-  const scoreMatch = text.match(/\*\*(\d+)\s*-\s*(\d+)\*\*\s*(FT|AET|PEN|HT|\d{1,3}'?)/i)
-    || text.match(/(FT|AET|PEN|HT|\d{1,3}'?)\s*\n+\s*\*\*(\d+)\s*-\s*(\d+)\*\*/i);
+  const scoreMatch = text.match(/\*\*(\d+)\s*-\s*(\d+)\*\*\s*(FT|AET|PEN)/i)
+    || text.match(/(FT|AET|PEN)\s*\n+\s*\*\*(\d+)\s*-\s*(\d+)\*\*/i)
+    || text.match(/\*\*(\d+)\s*-\s*(\d+)\*\*\s*(HT|\d{1,3}'?)/i)
+    || text.match(/(HT|\d{1,3}'?)\s*\n+\s*\*\*(\d+)\s*-\s*(\d+)\*\*/i);
   if (!scoreMatch) return null;
 
   const scoreFirst = scoreMatch[0].trim().startsWith("**");
@@ -205,7 +209,9 @@ async function settleSignalsFromForebet(db, signals) {
     const matchGame = parseForebetMatchScore(await response.text());
     if (!matchGame) return;
 
-    const result = getSignalSettlement(signal, matchGame) || "pendente";
+    const market = normalizeMarketName(signal.market || signal.marketLabel);
+    const canSettleMarket = !(market.includes("corner") || market.includes("escanteio"));
+    const result = canSettleMarket ? (getSignalSettlement(signal, matchGame) || "pendente") : (signal.result || "pendente");
     const update = {
       scoreText: matchGame.scoreText,
       liveStatus: matchGame.liveStatus
