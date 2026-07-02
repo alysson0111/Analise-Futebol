@@ -36,6 +36,7 @@ function cleanSignal(input) {
     key: String(input.key || ""),
     sourceId: String(input.sourceId || ""),
     source: String(input.source || ""),
+    forebetUrl: String(input.forebetUrl || ""),
     home: String(input.home || ""),
     away: String(input.away || ""),
     league: String(input.league || ""),
@@ -63,6 +64,78 @@ function normalizeMarketName(value) {
 function parseScoreTotal(scoreText) {
   const parts = String(scoreText || "").split("x").map((part) => Number(part.trim()));
   return parts.length === 2 && parts.every(Number.isFinite) ? parts[0] + parts[1] : 0;
+}
+
+function asNumber(value, fallback = 0) {
+  const number = Number(String(value ?? "").replace(",", "."));
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function slugify(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function forebetReaderUrl(url) {
+  return `https://r.jina.ai/http://${url}`;
+}
+
+function forebetMatchUrl(signal) {
+  if (signal.forebetUrl) return signal.forebetUrl;
+  const sourceId = String(signal.sourceId || "");
+  if (!/^\d+$/.test(sourceId)) return "";
+  const slug = slugify(`${signal.home || ""} ${signal.away || ""}`);
+  return slug ? `https://www.forebet.com/en/football/matches/${slug}-${sourceId}` : "";
+}
+
+function parsePtDateTime(dateText, stats = []) {
+  const dateMatch = String(dateText || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!dateMatch) return null;
+  const timeLine = (Array.isArray(stats) ? stats : []).find((entry) => /DADO \| Horario \|/i.test(String(entry)));
+  const timeMatch = String(timeLine || "").match(/(\d{1,2}):(\d{2})/);
+  const [, day, month, year] = dateMatch;
+  const hour = timeMatch ? timeMatch[1].padStart(2, "0") : "00";
+  const minute = timeMatch ? timeMatch[2] : "00";
+  const date = new Date(`${year}-${month}-${day}T${hour}:${minute}:00-03:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function shouldCheckForebetSettlement(signal) {
+  if (signal.result !== "pendente") return false;
+  if (!forebetMatchUrl(signal)) return false;
+
+  const kickoff = parsePtDateTime(signal.dateText, signal.stats);
+  if (!kickoff) return true;
+
+  const nowMs = Date.now();
+  const settleWindowMs = 120 * 60 * 1000;
+  return kickoff.getTime() + settleWindowMs <= nowMs;
+}
+
+function parseForebetMatchScore(markdown) {
+  const text = String(markdown || "");
+  const scoreMatch = text.match(/\*\*(\d+)\s*-\s*(\d+)\*\*\s*(FT|AET|PEN|HT|\d{1,3}'?)/i)
+    || text.match(/(FT|AET|PEN|HT|\d{1,3}'?)\s*\n+\s*\*\*(\d+)\s*-\s*(\d+)\*\*/i);
+  if (!scoreMatch) return null;
+
+  const scoreFirst = scoreMatch[0].trim().startsWith("**");
+  const homeGoals = asNumber(scoreFirst ? scoreMatch[1] : scoreMatch[2]);
+  const awayGoals = asNumber(scoreFirst ? scoreMatch[2] : scoreMatch[3]);
+  const status = String(scoreFirst ? scoreMatch[3] : scoreMatch[1]).toUpperCase().replace("'", "");
+  const elapsed = /^\d+$/.test(status) ? asNumber(status) : (status === "HT" ? 45 : FINISHED_STATUSES.has(status) ? 90 : 0);
+
+  return {
+    scoreText: `${homeGoals}x${awayGoals}`,
+    totalGoals: homeGoals + awayGoals,
+    apiStatus: status,
+    liveStatus: /^\d+$/.test(status) ? `${status}'` : status,
+    fixture: { status: { short: status, elapsed } },
+    goals: { home: homeGoals, away: awayGoals }
+  };
 }
 
 function getSignalSettlement(signal, game) {
@@ -110,7 +183,47 @@ function getSignalSettlement(signal, game) {
 }
 
 async function settleSignalsFromForebet(db, signals) {
-  return signals;
+  const candidates = signals
+    .filter(shouldCheckForebetSettlement)
+    .sort((a, b) => (parsePtDateTime(a.dateText, a.stats)?.getTime() || 0) - (parsePtDateTime(b.dateText, b.stats)?.getTime() || 0))
+    .slice(0, 25);
+
+  if (!candidates.length) return signals;
+
+  const settledById = new Map();
+  await Promise.allSettled(candidates.map(async (signal) => {
+    const url = forebetMatchUrl(signal);
+    const response = await fetch(forebetReaderUrl(url), {
+      headers: {
+        "User-Agent": "Mozilla/5.0 Analise-Futebol/1.0",
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache"
+      }
+    });
+    if (!response.ok) return;
+
+    const matchGame = parseForebetMatchScore(await response.text());
+    if (!matchGame) return;
+
+    const result = getSignalSettlement(signal, matchGame) || "pendente";
+    const update = {
+      scoreText: matchGame.scoreText,
+      liveStatus: matchGame.liveStatus
+    };
+    const dbUpdate = {
+      ...update,
+      updatedAt: now()
+    };
+    if (result !== "pendente") {
+      dbUpdate.result = result;
+      dbUpdate.settledAtText = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+    }
+
+    await db.collection("sinais").doc(String(signal.id)).update(dbUpdate);
+    settledById.set(signal.id, { ...signal, ...update, result, settledAtText: dbUpdate.settledAtText || signal.settledAtText || "" });
+  }));
+
+  return signals.map((signal) => settledById.get(signal.id) || signal);
 }
 
 async function listSignals(res) {

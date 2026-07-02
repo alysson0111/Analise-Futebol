@@ -136,6 +136,7 @@ function baseGame(prediction, market, date) {
     liveShots: 0,
     liveShotsOnTarget: 0,
     source: "Forebet",
+    forebetUrl: prediction.url || "",
     market,
     marketLabel: marketLabel(market),
     odd: 0,
