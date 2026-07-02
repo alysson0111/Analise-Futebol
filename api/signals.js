@@ -109,8 +109,9 @@ function shouldCheckForebetSettlement(signal) {
   const liveStatus = String(signal.liveStatus || "").toUpperCase().replace("'", "");
   const alreadyFinal = FINISHED_STATUSES.has(liveStatus);
   if (signal.result !== "pendente" && alreadyFinal) return false;
+  const hasPartialScore = /^\d{1,3}$/.test(liveStatus);
   const checkedSeconds = Number(signal.settleCheckedAt?._seconds || 0);
-  if (checkedSeconds && Date.now() - checkedSeconds * 1000 < 2 * 60 * 60 * 1000) return false;
+  if (!hasPartialScore && checkedSeconds && Date.now() - checkedSeconds * 1000 < 2 * 60 * 60 * 1000) return false;
 
   const kickoff = parsePtDateTime(signal.dateText, signal.stats);
   if (!kickoff) return true;
