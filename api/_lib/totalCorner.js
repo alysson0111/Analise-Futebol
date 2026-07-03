@@ -67,6 +67,16 @@ function parseCornerLine(value) {
   return match ? asNumber(match[1]) : 0;
 }
 
+function parseFirstNumber(value) {
+  const match = cleanLine(value).match(/(\d+(?:\.\d+)?)/);
+  return match ? asNumber(match[1]) : 0;
+}
+
+function parseGoalLine(value) {
+  const line = parseFirstNumber(value);
+  return line > 0 && line <= 6 ? line : 0;
+}
+
 function parseHandicapLine(value) {
   const match = cleanLine(value).match(/([+-]?\d+(?:\.\d+)?)\s*(?:\([^)]+\))?\s*$/);
   return match ? asNumber(match[1]) : null;
@@ -151,6 +161,8 @@ function parseCompactRecord(record) {
   const afterCorners = afterHandicap
     .slice(cornersMatch.index + cornersMatch[0].length)
     .replace(/^\s*\([^)]*\)\s*/, "");
+  const cornerLineMatch = cleanLine(afterCorners).match(/^(\d+(?:\.\d+)?)(?:\s*\([^)]+\))?/);
+  const afterCornerLine = cornerLineMatch ? cleanLine(afterCorners).slice(cornerLineMatch[0].length) : "";
 
   return {
     league: "TotalCorner",
@@ -165,6 +177,7 @@ function parseCompactRecord(record) {
     liveCorners: asNumber(cornersMatch[1]) + asNumber(cornersMatch[2]),
     handicapLine,
     cornerLine: parseCornerLine(afterCorners),
+    goalLine: parseGoalLine(afterCornerLine),
     source: "TotalCorner"
   };
 }
@@ -223,6 +236,8 @@ export function totalCornerRowsToFixtures(rows) {
       totalCorner: row,
       handicapLine: row.handicapLine,
       handicapSignal: row.handicapLine === null ? "" : `Handicap mandante ${row.handicapLine > 0 ? "+" : ""}${row.handicapLine}`,
+      goalLine: row.goalLine || 0,
+      totalCornerGoalLine: row.goalLine || 0,
       avgCornersTotal: row.cornerLine || row.liveCorners,
       mediaEscanteiosConjunta: row.cornerLine || row.liveCorners,
       liveStats: [
@@ -279,6 +294,8 @@ export function mergeTotalCornerRows(rows, totalCornerRows) {
       totalCorner: match,
       handicapLine: match.handicapLine,
       handicapSignal: match.handicapLine === null ? "" : `Handicap mandante ${match.handicapLine > 0 ? "+" : ""}${match.handicapLine}`,
+      goalLine: match.goalLine || 0,
+      totalCornerGoalLine: match.goalLine || 0,
       avgCornersTotal: match.cornerLine || match.liveCorners,
       mediaEscanteiosConjunta: match.cornerLine || match.liveCorners,
       liveStats: [

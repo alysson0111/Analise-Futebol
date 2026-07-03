@@ -1,10 +1,11 @@
-const MARKETS = ["over05", "over15", "over25", "under25", "corners", "handicap", "ml"];
+const MARKETS = ["over05", "over15", "over25", "under25", "under35", "corners", "handicap", "ml"];
 
 const MARKET_LABELS = {
   over05: "+0.5 gols",
   over15: "+1.5 gols",
   over25: "+2.5 gols",
   under25: "Under 2.5",
+  under35: "Under 3.5 IA",
   corners: "Escanteios",
   handicap: "Handicap",
   ml: "ML"
@@ -175,6 +176,56 @@ function scanUnder25(game) {
     grade,
     status: passed ? "Entrada" : "Observar",
     statsPrefix: `CLASSIFICACAO ${grade} (${points}/10)`
+  }, checks);
+}
+
+function scanUnder35(game) {
+  if (game.totalGoals >= 4) {
+    const checks = [
+      item("Under 3.5 ainda possivel", false, `${game.scoreText || game.totalGoals} ja passou da linha`, true)
+    ];
+    return result(game, {
+      confidence: 0,
+      odd: game.under35Odd || game.odd || 0,
+      grade: "Descarta",
+      status: "Observar",
+      statsPrefix: "IA Descarta (linha ja perdida)"
+    }, checks);
+  }
+
+  const elapsed = asNumber(game.elapsed);
+  const goalLine = asNumber(game.goalLine || game.totalCornerGoalLine);
+  const cornerPressure = Math.max(game.liveCorners, game.avgCornersTotal);
+  const handicapAbs = Number.isFinite(Number(game.handicapLine)) ? Math.abs(Number(game.handicapLine)) : 0;
+  const scoreGap = Math.abs(game.homeGoals - game.awayGoals);
+  const stillUsefulMinute = elapsed === 0 || (elapsed >= 10 && elapsed <= 82);
+  const lowGoalState = game.totalGoals <= 2 || (game.totalGoals === 3 && elapsed >= 75);
+  const controlledGoalLine = goalLine > 0 && goalLine <= 3.5;
+  const noExtremeFavorite = !Number.isFinite(Number(game.handicapLine)) || handicapAbs <= 1.5;
+  const scoreControlled = scoreGap <= 2;
+  const pressureControlled = cornerPressure <= 10.5;
+  const hasTotalCorner = Boolean(game.totalCornerSource);
+
+  const checks = [
+    item("IA confrontou dados do TotalCorner", hasTotalCorner, hasTotalCorner ? "ok" : "indisponivel", hasTotalCorner),
+    item("Linha de gols aceita para Under 3.5", controlledGoalLine, goalLine ? goalLine.toFixed(2) : "indisponivel", Boolean(goalLine)),
+    item("Placar ainda protege o Under 3.5", lowGoalState, game.scoreText || "-", true),
+    item("Minuto util para entrada", stillUsefulMinute, elapsed ? `${elapsed}'` : game.apiStatus || "-", true),
+    item("Pressao por escanteios controlada", pressureControlled, `${cornerPressure.toFixed(1)}`, game.hasCorners),
+    item("Sem favorito extremo no handicap", noExtremeFavorite, Number.isFinite(Number(game.handicapLine)) ? formatHandicapLine(game.handicapLine) : "sem linha", true),
+    item("Jogo sem diferenca exagerada no placar", scoreControlled, game.scoreText || "-", true)
+  ];
+  const points = checks.filter((entry) => entry.available && entry.passed).length;
+  const passed = hasTotalCorner && controlledGoalLine && lowGoalState && stillUsefulMinute && points >= 6;
+  const confidence = passed ? Math.min(88, 50 + points * 6 - Math.max(0, game.totalGoals - 1) * 5) : 0;
+
+  return result(game, {
+    confidence,
+    odd: game.under35Odd || game.odd || 0,
+    grade: passed ? `IA ${points}/7` : "Descarta",
+    status: passed ? "Entrada" : "Observar",
+    statsPrefix: `IA Under 3.5 ${passed ? "Aprovado" : "Descarta"} (${points}/7)`,
+    generatedSignals: passed ? ["Under 3.5 gols"] : []
   }, checks);
 }
 
@@ -349,7 +400,10 @@ function normalizeFixture(row) {
     firstHalfGoalPercent: percent(row.firstHalfGoalPercent || row.percentualGolPrimeiroTempo),
     decisiveGame: asBool(row.decisiveGame || row.jogoDecisivo),
     under25Odd: getMarketOdd(row, ["under25Odd", "oddUnder25", "underTwoPointFiveOdd"], ["under 2.5", "under 2.5 goals", "under 2,5"]),
+    under35Odd: getMarketOdd(row, ["under35Odd", "oddUnder35", "underThreePointFiveOdd"], ["under 3.5", "under 3.5 goals", "under 3,5"]),
+    goalLine: asNumber(row.goalLine || row.totalCornerGoalLine || row.goalsLine),
     underFriendlyLeague: row.underFriendlyLeague === undefined ? true : asBool(row.underFriendlyLeague),
+    elapsed: asNumber(elapsed),
     hasHistory,
     hasModel: Boolean(row.favoriteAtHome || row.homeFavoriteByModel || row.favoritoEmCasaModelo),
     hasShots: hasLiveStats || Boolean(row.avgShotsPerGame || row.favoriteAvgShots || row.mediaFinalizacoes),
@@ -367,6 +421,7 @@ export function analyzeFixtures(payload) {
       if (market === "over15") return scanOver15(game);
       if (market === "over25") return scanOver25(game);
       if (market === "under25") return scanUnder25(game);
+      if (market === "under35") return scanUnder35(game);
       if (market === "corners") return scanCorners(game);
       if (market === "handicap") return scanHandicap(game);
       return scanMl(game);

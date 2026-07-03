@@ -203,6 +203,11 @@ function getSignalSettlement(signal, game) {
     return finished ? "green" : "";
   }
 
+  if (market.includes("under35") || market.includes("under3.5")) {
+    if (totalGoals >= 4) return "red";
+    return finished ? "green" : "";
+  }
+
   if (market.includes("corner") || market.includes("escanteio")) {
     if (corners >= 9) return "green";
     return finished ? "red" : "";
@@ -429,6 +434,7 @@ function MarketNav({ selectedMarket, setSelectedMarket, marketCounts, selectedPa
     ["over15", "+1.5 gols", marketCounts.over15 || 0],
     ["over25", "+2.5 gols", marketCounts.over25 || 0],
     ["under25", "Under 2.5", marketCounts.under25 || 0],
+    ["under35", "Under 3.5 IA", marketCounts.under35 || 0],
     ["corners", "Escanteios", marketCounts.corners || 0],
     ["handicap", "Handicap", marketCounts.handicap || 0],
     ["ml", "ML", marketCounts.ml || 0]

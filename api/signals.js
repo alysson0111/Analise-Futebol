@@ -175,6 +175,11 @@ function getSignalSettlement(signal, game) {
     return finished ? "green" : "";
   }
 
+  if (market.includes("under35") || market.includes("under3.5")) {
+    if (totalGoals >= 4) return "red";
+    return finished ? "green" : "";
+  }
+
   if (market.includes("corner") || market.includes("escanteio")) {
     if (game.liveCorners === null || game.liveCorners === undefined || game.liveCorners === "") return "";
     if (corners >= 9) return "green";

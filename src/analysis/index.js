@@ -2,6 +2,7 @@ import { over05 } from "./over05.js";
 import { over15 } from "./over15.js";
 import { over25 } from "./over25.js";
 import { under25 } from "./under25.js";
+import { under35 } from "./under35.js";
 import { corners } from "./corners.js";
 import { handicap } from "./handicap.js";
 import { ml } from "./ml.js";
@@ -11,6 +12,7 @@ export const markets = {
   over15,
   over25,
   under25,
+  under35,
   corners,
   handicap,
   ml

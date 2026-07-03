@@ -15,6 +15,9 @@ function addTotalCornerStats(game, source) {
   if (source?.totalCorner) {
     stats.push(`TOTALCORNER | Escanteios | ${source.totalCorner.homeCorners}-${source.totalCorner.awayCorners}`);
     stats.push(`TOTALCORNER | Linha escanteios | ${Number(source.totalCorner.cornerLine || 0).toFixed(1)}`);
+    if (source.totalCorner.goalLine) {
+      stats.push(`TOTALCORNER | Linha gols | ${Number(source.totalCorner.goalLine || 0).toFixed(1)}`);
+    }
     if (source.totalCorner.handicapLine !== null && source.totalCorner.handicapLine !== undefined) {
       const line = Number(source.totalCorner.handicapLine || 0);
       stats.push(`TOTALCORNER | Handicap | Mandante ${line > 0 ? "+" : ""}${line}`);
