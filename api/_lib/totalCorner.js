@@ -72,6 +72,10 @@ function parseHandicapLine(value) {
   return match ? asNumber(match[1]) : null;
 }
 
+function stripMarkdownImages(value) {
+  return String(value || "").replace(/!\[[^\]]*\]\([^)]*\)/g, " ");
+}
+
 function parseBlock(block) {
   const lines = String(block || "").split("\n").map(cleanLine).filter(Boolean);
   const headerIndex = lines.findIndex((line) => /^\d{2}:\d{2}\s+/.test(line));
@@ -111,6 +115,67 @@ function parseBlock(block) {
     cornerLine,
     source: "TotalCorner"
   };
+}
+
+function parseCompactRecord(record) {
+  const text = String(record || "").replace(/\s+/g, " ").trim();
+  const teamMatches = [
+    ...text.matchAll(/\[([^\]]+)\]\(https:\/\/www\.totalcorner\.com\/pt\/team\/view\/[^)]*\)/g)
+  ];
+  if (teamMatches.length < 2) return null;
+
+  const homeMatch = teamMatches[0];
+  const awayMatch = teamMatches[1];
+  const homeEnd = homeMatch.index + homeMatch[0].length;
+  const awayEnd = awayMatch.index + awayMatch[0].length;
+  const beforeHome = stripMarkdownImages(text.slice(0, homeMatch.index)).replace(/\s+/g, " ").trim();
+  const betweenTeams = text.slice(homeEnd, awayMatch.index);
+  const afterAway = stripMarkdownImages(text.slice(awayEnd))
+    .replace(/\[[^\]]+\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const timeMatch = beforeHome.match(/(\d{2}:\d{2})(?:\s+(\d{1,3}|Intervalo|HT|FT))?/i);
+  const goalsMatch = betweenTeams.match(/(\d+)\s*-\s*(\d+)/);
+  if (!timeMatch || !goalsMatch) return null;
+
+  const handicapMatches = [...afterAway.matchAll(/([+-]\d+(?:\.\d+)?|0\.0)(?:\s*\([^)]+\))?/g)];
+  const handicapMatch = handicapMatches[0] || null;
+  const handicapLine = handicapMatch ? asNumber(handicapMatch[1]) : null;
+  const afterHandicap = handicapMatch
+    ? afterAway.slice(handicapMatch.index + handicapMatch[0].length)
+    : afterAway;
+  const cornersMatch = afterHandicap.match(/(\d+)\s*-\s*(\d+)/);
+  if (!cornersMatch) return null;
+
+  const afterCorners = afterHandicap
+    .slice(cornersMatch.index + cornersMatch[0].length)
+    .replace(/^\s*\([^)]*\)\s*/, "");
+
+  return {
+    league: "TotalCorner",
+    time: timeMatch[1],
+    status: timeMatch[2] || "",
+    home: cleanTeam(homeMatch[1]),
+    away: cleanTeam(awayMatch[1]),
+    homeGoals: asNumber(goalsMatch[1]),
+    awayGoals: asNumber(goalsMatch[2]),
+    homeCorners: asNumber(cornersMatch[1]),
+    awayCorners: asNumber(cornersMatch[2]),
+    liveCorners: asNumber(cornersMatch[1]) + asNumber(cornersMatch[2]),
+    handicapLine,
+    cornerLine: parseCornerLine(afterCorners),
+    source: "TotalCorner"
+  };
+}
+
+function parseCompactRows(markdown) {
+  const records = [
+    ...String(markdown || "").matchAll(
+      /!\[Image\s+\d+[^\]]*\]\(https:\/\/static\.totalcorner\.com\/img\/countries\/[^)]*\)([\s\S]*?)(?=!\[Image\s+\d+[^\]]*\]\(https:\/\/static\.totalcorner\.com\/img\/countries\/|Para usar nossos dados|$)/g
+    )
+  ];
+  return records.map((match) => parseCompactRecord(match[1])).filter((row) => row && row.home && row.away);
 }
 
 function getSaoPauloDateText() {
@@ -169,7 +234,7 @@ export function totalCornerRowsToFixtures(rows) {
   });
 }
 
-export function parseTotalCornerMarkdown(markdown) {
+function parseTotalCornerMarkdownLegacy(markdown) {
   const text = String(markdown || "");
   const footerIndex = text.indexOf("Para usar nossos dados");
   const section = footerIndex > 0 ? text.slice(0, footerIndex) : text;
@@ -177,6 +242,14 @@ export function parseTotalCornerMarkdown(markdown) {
     .split(/Estatísticas Cotas Ao vivo/i)
     .map(parseBlock)
     .filter((row) => row && row.home && row.away);
+}
+
+export function parseTotalCornerMarkdown(markdown) {
+  const text = String(markdown || "");
+  const footerIndex = text.indexOf("Para usar nossos dados");
+  const section = footerIndex > 0 ? text.slice(0, footerIndex) : text;
+  const tableRows = parseTotalCornerMarkdownLegacy(section);
+  return tableRows.length ? tableRows : parseCompactRows(section);
 }
 
 function findTotalCornerMatch(row, totalCornerRows) {
