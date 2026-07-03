@@ -1,4 +1,5 @@
 import { analyzeFixtures, publicGame } from "./scanner.js";
+import { fetchTotalCornerToday, mergeTotalCornerRows } from "./totalCorner.js";
 
 const FOREBET_LIVE_URL = "https://www.forebet.com/en/live-football-tips";
 const FOREBET_LIVESCORE_URL = "https://www.forebet.com/en/livescore";
@@ -314,13 +315,18 @@ function addForebetStats(game, source) {
     `FOREBET | Probabilidades 1/X/2 | ${(source?.forebetProbabilities || []).join("/") || "-"}`,
     `FOREBET | Media de gols | ${Number(source?.forebetAvgGoals || 0).toFixed(2)}`
   ];
+  if (source?.totalCorner) {
+    stats.push(`TOTALCORNER | Escanteios | ${source.totalCorner.homeCorners}-${source.totalCorner.awayCorners}`);
+    stats.push(`TOTALCORNER | Linha escanteios | ${Number(source.totalCorner.cornerLine || 0).toFixed(1)}`);
+  }
 
   return {
     ...game,
     dadosJogo: [
       `DADO | Gols no jogo | ${game.totalGoals}`,
       `DADO | Tempo/status | ${game.liveStatus || "-"}`,
-      `DADO | Fonte ao vivo | Forebet`
+      ...(source?.totalCorner ? [`DADO | Escanteios ao vivo | ${game.liveCorners}`] : []),
+      `DADO | Fonte ao vivo | ${source?.totalCorner ? "Forebet + TotalCorner" : "Forebet"}`
     ],
     stats: [...stats, ...(game.stats || []).filter((entry) => !String(entry).includes("API nao trouxe"))]
   };
@@ -332,9 +338,10 @@ export async function fetchForebetLiveGames() {
     "Cache-Control": "no-cache",
     Pragma: "no-cache"
   };
-  const [liveScoreResponse, tipsResponse] = await Promise.all([
+  const [liveScoreResponse, tipsResponse, totalCornerResult] = await Promise.all([
     fetch(forebetReaderUrl(FOREBET_LIVESCORE_URL), { headers }),
-    fetch(forebetReaderUrl(FOREBET_LIVE_URL), { headers })
+    fetch(forebetReaderUrl(FOREBET_LIVE_URL), { headers }),
+    fetchTotalCornerToday().then((rows) => ({ ok: true, rows })).catch((error) => ({ ok: false, error }))
   ]);
 
   if (!liveScoreResponse.ok && !tipsResponse.ok) {
@@ -346,7 +353,8 @@ export async function fetchForebetLiveGames() {
   if (tipsResponse.ok) {
     tipRows = parseLiveMarkdown(await tipsResponse.text()).filter((row) => row.fixture?.status?.short !== "NS");
   }
-  const rows = livescoreRows.length ? mergeLivescoreWithTips(livescoreRows, tipRows) : tipRows;
+  const forebetRows = livescoreRows.length ? mergeLivescoreWithTips(livescoreRows, tipRows) : tipRows;
+  const rows = totalCornerResult.ok ? mergeTotalCornerRows(forebetRows, totalCornerResult.rows) : forebetRows;
   const games = analyzeFixtures({ response: rows }).map((game) => {
     const source = rows.find((row) => String(row.fixture.id) === String(game.sourceId));
     return addForebetStats(publicGame({
@@ -359,7 +367,8 @@ export async function fetchForebetLiveGames() {
     updatedAt: new Date().toISOString(),
     count: rows.length,
     marketRows: games.length,
-    source: "Forebet Live",
+    source: totalCornerResult.ok ? "Forebet Live + TotalCorner" : "Forebet Live",
+    totalCornerCount: totalCornerResult.ok ? totalCornerResult.rows.length : 0,
     games,
     dateText: getSaoPauloDateText()
   };
