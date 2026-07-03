@@ -102,6 +102,8 @@ function parseBlock(block) {
     status: timeMatch[2] || "",
     home: cleanTeam(timeMatch[3]),
     away: cleanTeam(afterScore),
+    homeGoals: asNumber(scoreMatch[2]),
+    awayGoals: asNumber(scoreMatch[3]),
     homeCorners: corners.home,
     awayCorners: corners.away,
     liveCorners: corners.home + corners.away,
@@ -109,6 +111,62 @@ function parseBlock(block) {
     cornerLine,
     source: "TotalCorner"
   };
+}
+
+function getSaoPauloDateText() {
+  return new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+}
+
+function getSaoPauloDateIso() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function statusInfo(status) {
+  const value = cleanLine(status);
+  if (/^\d{1,3}$/.test(value)) return { elapsed: asNumber(value), short: "LIVE", liveStatus: `${value}'` };
+  if (/^Intervalo|HT$/i.test(value)) return { elapsed: 45, short: "HT", liveStatus: "HT" };
+  if (/^FT$/i.test(value)) return { elapsed: 90, short: "FT", liveStatus: "FT" };
+  return { elapsed: 0, short: value ? "LIVE" : "NS", liveStatus: value || "Pre-jogo" };
+}
+
+export function totalCornerRowsToFixtures(rows) {
+  const today = getSaoPauloDateIso();
+  return (rows || []).map((row) => {
+    const status = statusInfo(row.status);
+    return {
+      fixture: {
+        id: `totalcorner-${row.league}-${row.home}-${row.away}-${row.time}`,
+        date: `${today}T${String(row.time || "00:00").padStart(5, "0")}:00-03:00`,
+        status: { elapsed: status.elapsed, short: status.short }
+      },
+      teams: {
+        home: { name: row.home },
+        away: { name: row.away }
+      },
+      league: { name: row.league || "TotalCorner" },
+      goals: { home: row.homeGoals || 0, away: row.awayGoals || 0 },
+      displayTime: row.time || "--:--",
+      liveStatus: status.liveStatus,
+      source: "TotalCorner",
+      totalCorner: row,
+      handicapLine: row.handicapLine,
+      handicapSignal: row.handicapLine === null ? "" : `Handicap mandante ${row.handicapLine > 0 ? "+" : ""}${row.handicapLine}`,
+      avgCornersTotal: row.cornerLine || row.liveCorners,
+      mediaEscanteiosConjunta: row.cornerLine || row.liveCorners,
+      liveStats: [
+        { team: { name: row.home }, statistics: [{ type: "Corner Kicks", value: row.homeCorners }] },
+        { team: { name: row.away }, statistics: [{ type: "Corner Kicks", value: row.awayCorners }] }
+      ],
+      totalCornerDateText: getSaoPauloDateText()
+    };
+  });
 }
 
 export function parseTotalCornerMarkdown(markdown) {

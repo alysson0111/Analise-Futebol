@@ -190,66 +190,8 @@ function getSignalSettlement(signal, game) {
 }
 
 async function settleSignalsFromForebet(db, signals) {
-  const candidates = signals
-    .filter(shouldCheckForebetSettlement)
-    .sort((a, b) => {
-      const aMarket = normalizeMarketName(a.market || a.marketLabel);
-      const bMarket = normalizeMarketName(b.market || b.marketLabel);
-      const aCorners = aMarket.includes("corner") || aMarket.includes("escanteio") ? 1 : 0;
-      const bCorners = bMarket.includes("corner") || bMarket.includes("escanteio") ? 1 : 0;
-      if (aCorners !== bCorners) return aCorners - bCorners;
-      const aPartial = /^\d{1,3}'?$/.test(String(a.liveStatus || "")) ? 0 : 1;
-      const bPartial = /^\d{1,3}'?$/.test(String(b.liveStatus || "")) ? 0 : 1;
-      if (aPartial !== bPartial) return aPartial - bPartial;
-      return (parsePtDateTime(a.dateText, a.stats)?.getTime() || 0) - (parsePtDateTime(b.dateText, b.stats)?.getTime() || 0);
-    })
-    .slice(0, 25);
-
-  if (!candidates.length) return signals;
-
-  const settledById = new Map();
-  await Promise.allSettled(candidates.map(async (signal) => {
-    const url = forebetMatchUrl(signal);
-    const response = await fetch(forebetReaderUrl(url), {
-      headers: {
-        "User-Agent": "Mozilla/5.0 Analise-Futebol/1.0",
-        "Cache-Control": "no-cache",
-        Pragma: "no-cache"
-      }
-    });
-    if (!response.ok) {
-      await db.collection("sinais").doc(String(signal.id)).update({ settleCheckedAt: now() });
-      return;
-    }
-
-    const matchGame = parseForebetMatchScore(await response.text());
-    if (!matchGame) {
-      await db.collection("sinais").doc(String(signal.id)).update({ settleCheckedAt: now() });
-      return;
-    }
-
-    const market = normalizeMarketName(signal.market || signal.marketLabel);
-    const canSettleMarket = !(market.includes("corner") || market.includes("escanteio"));
-    const result = canSettleMarket ? (getSignalSettlement(signal, matchGame) || "pendente") : (signal.result || "pendente");
-    const update = {
-      scoreText: matchGame.scoreText,
-      liveStatus: matchGame.liveStatus
-    };
-    const dbUpdate = {
-      ...update,
-      settleCheckedAt: now(),
-      updatedAt: now()
-    };
-    if (result !== "pendente") {
-      dbUpdate.result = result;
-      dbUpdate.settledAtText = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
-    }
-
-    await db.collection("sinais").doc(String(signal.id)).update(dbUpdate);
-    settledById.set(signal.id, { ...signal, ...update, result, settledAtText: dbUpdate.settledAtText || signal.settledAtText || "" });
-  }));
-
-  return signals.map((signal) => settledById.get(signal.id) || signal);
+  void db;
+  return signals;
 }
 
 async function listSignals(res) {
