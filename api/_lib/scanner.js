@@ -88,55 +88,138 @@ function scanMl(game) {
   }, checks);
 }
 
+function gameContext(game) {
+  const elapsed = asNumber(game.elapsed);
+  const goalLine = asNumber(game.goalLine || game.totalCornerGoalLine);
+  const cornerPressure = Math.max(game.liveCorners, game.avgCornersTotal);
+  const handicapAbs = Number.isFinite(Number(game.handicapLine)) ? Math.abs(Number(game.handicapLine)) : 0;
+  const scoreGap = Math.abs(game.homeGoals - game.awayGoals);
+  const hasTotalCorner = Boolean(game.totalCornerSource);
+  return { elapsed, goalLine, cornerPressure, handicapAbs, scoreGap, hasTotalCorner };
+}
+
+function pointsOf(checks) {
+  return checks.filter((entry) => entry.available && entry.passed).length;
+}
+
 function scanOver05(game) {
-  const isZeroZero = game.homeGoals === 0 && game.awayGoals === 0;
-  const oddOk = game.over05Odd >= 1.60;
+  if (game.totalGoals >= 1) {
+    const checks = [
+      item("Over 0.5 ainda precisa de gol", false, `${game.scoreText || game.totalGoals} ja bateu`, true)
+    ];
+    return result(game, {
+      confidence: 0,
+      odd: game.over05Odd || game.odd || 0,
+      grade: "Descarta",
+      status: "Observar",
+      statsPrefix: "IA +0.5 Descarta (linha ja batida)"
+    }, checks);
+  }
+
+  const { elapsed, goalLine, cornerPressure, handicapAbs, hasTotalCorner } = gameContext(game);
+  const usefulMinute = elapsed >= 15 && elapsed <= 70;
+  const goalLineOk = goalLine >= 2;
+  const pressureOk = cornerPressure >= 5;
+  const noExtremeFavorite = handicapAbs <= 1.75;
   const checks = [
-    item("Placar 0x0", isZeroZero, game.scoreText || "-", true),
-    item("Odd Over 0.5 >= 1.60", oddOk, game.over05Odd ? game.over05Odd.toFixed(2) : "indisponivel", Boolean(game.over05Odd))
+    item("IA confrontou dados do TotalCorner", hasTotalCorner, hasTotalCorner ? "ok" : "indisponivel", hasTotalCorner),
+    item("Placar 0x0 para buscar primeiro gol", game.totalGoals === 0, game.scoreText || "-", true),
+    item("Linha de gols favorece +0.5", goalLineOk, goalLine ? goalLine.toFixed(2) : "indisponivel", Boolean(goalLine)),
+    item("Minuto util para entrada", usefulMinute, elapsed ? `${elapsed}'` : game.apiStatus || "-", true),
+    item("Pressao minima por escanteios", pressureOk, `${cornerPressure.toFixed(1)}`, game.hasCorners),
+    item("Sem favorito extremo travando jogo", noExtremeFavorite, Number.isFinite(Number(game.handicapLine)) ? formatHandicapLine(game.handicapLine) : "sem linha", true)
   ];
-  const passed = checks.every((entry) => entry.available && entry.passed);
+  const points = pointsOf(checks);
+  const passed = hasTotalCorner && game.totalGoals === 0 && goalLineOk && usefulMinute && points >= 5;
   return result(game, {
-    confidence: passed ? 75 : 0,
+    confidence: passed ? Math.min(86, 50 + points * 6) : 0,
     odd: game.over05Odd || game.odd || 0,
-    status: passed ? "Entrada" : "Observar"
+    grade: passed ? `IA ${points}/6` : "Descarta",
+    status: passed ? "Entrada" : "Observar",
+    statsPrefix: `IA +0.5 ${passed ? "Aprovado" : "Descarta"} (${points}/6)`,
+    generatedSignals: passed ? ["Over 0.5 gols"] : []
   }, checks);
 }
 
 function scanOver15(game) {
-  const xgPass = game.xgPercent ? game.xgPercent >= 55 : game.xgTotal >= 0.55;
-  const oddOk = game.over15Odd >= 1.60;
+  if (game.totalGoals >= 2) {
+    const checks = [
+      item("Over 1.5 ainda precisa de gol", false, `${game.scoreText || game.totalGoals} ja bateu`, true)
+    ];
+    return result(game, {
+      confidence: 0,
+      odd: game.over15Odd || game.odd || 0,
+      grade: "Descarta",
+      status: "Observar",
+      statsPrefix: "IA +1.5 Descarta (linha ja batida)"
+    }, checks);
+  }
+
+  const { elapsed, goalLine, cornerPressure, handicapAbs, scoreGap, hasTotalCorner } = gameContext(game);
+  const usefulMinute = elapsed >= 25 && elapsed <= 72;
+  const goalLineOk = goalLine >= 2.5;
+  const pressureOk = cornerPressure >= 6;
+  const scoreOk = game.totalGoals <= 1 && scoreGap <= 1;
+  const noExtremeFavorite = handicapAbs <= 2;
   const checks = [
-    item("xG minimo para Over 1.5", xgPass, game.xgPercent ? `${game.xgPercent}%` : game.xgAvailable ? `xG ${game.xgTotal.toFixed(2)}` : "indisponivel", game.xgAvailable || Boolean(game.xgPercent)),
-    item("Total de finalizacoes >= 10", game.liveShots >= 10 || game.avgShotsPerGame >= 10, `${Math.max(game.liveShots, game.avgShotsPerGame).toFixed(1)}`, game.hasShots),
-    item("Finalizacoes no alvo >= 5", game.shotsOnTargetTotal >= 5, `${game.shotsOnTargetTotal.toFixed(1)}`, game.hasShots),
-    item("Escanteios >= 5", game.liveCorners >= 5 || game.avgCornersTotal >= 5, `${Math.max(game.liveCorners, game.avgCornersTotal).toFixed(1)}`, game.hasCorners),
-    item("Odd >= 1.60", oddOk, game.over15Odd ? game.over15Odd.toFixed(2) : "indisponivel", Boolean(game.over15Odd))
+    item("IA confrontou dados do TotalCorner", hasTotalCorner, hasTotalCorner ? "ok" : "indisponivel", hasTotalCorner),
+    item("Linha de gols favorece +1.5", goalLineOk, goalLine ? goalLine.toFixed(2) : "indisponivel", Boolean(goalLine)),
+    item("Placar ainda precisa do mercado", scoreOk, game.scoreText || "-", true),
+    item("Minuto util para entrada", usefulMinute, elapsed ? `${elapsed}'` : game.apiStatus || "-", true),
+    item("Pressao por escanteios suficiente", pressureOk, `${cornerPressure.toFixed(1)}`, game.hasCorners),
+    item("Sem favorito extremo", noExtremeFavorite, Number.isFinite(Number(game.handicapLine)) ? formatHandicapLine(game.handicapLine) : "sem linha", true)
   ];
-  const passed = checks.every((entry) => entry.available && entry.passed);
-  const confidence = passed ? Math.min(90, 55 + checks.filter((entry) => entry.passed).length * 7) : 0;
+  const points = pointsOf(checks);
+  const passed = hasTotalCorner && goalLineOk && scoreOk && usefulMinute && points >= 5;
+  const confidence = passed ? Math.min(88, 48 + points * 7 - game.totalGoals * 3) : 0;
 
   return result(game, {
     confidence,
     odd: game.over15Odd || game.odd || 0,
-    status: passed ? "Entrada" : "Observar"
+    grade: passed ? `IA ${points}/6` : "Descarta",
+    status: passed ? "Entrada" : "Observar",
+    statsPrefix: `IA +1.5 ${passed ? "Aprovado" : "Descarta"} (${points}/6)`,
+    generatedSignals: passed ? ["Over 1.5 gols"] : []
   }, checks);
 }
 
 function scanOver25(game) {
-  const oddOk = game.over25Odd >= 1.7 && game.over25Odd <= 2.1;
+  if (game.totalGoals >= 3) {
+    const checks = [
+      item("Over 2.5 ainda precisa de gol", false, `${game.scoreText || game.totalGoals} ja bateu`, true)
+    ];
+    return result(game, {
+      confidence: 0,
+      odd: game.over25Odd || game.odd || 0,
+      grade: "Descarta",
+      status: "Observar",
+      statsPrefix: "IA +2.5 Descarta (linha ja batida)"
+    }, checks);
+  }
+
+  const { elapsed, goalLine, cornerPressure, handicapAbs, scoreGap, hasTotalCorner } = gameContext(game);
+  const usefulMinute = elapsed === 0 || (elapsed >= 22 && elapsed <= 72);
+  const goalLineOk = goalLine >= 2.75;
+  const pressureOk = cornerPressure >= 6.5;
+  const scoreOk = game.totalGoals >= 1 && game.totalGoals <= 2 && scoreGap <= 2;
+  const noExtremeFavorite = handicapAbs <= 2;
   const checks = [
-    item("Media de gols dos dois times alta", game.avgGoalsBothTeams > 2.8, `${game.avgGoalsBothTeams.toFixed(2)}`, game.hasHistory),
-    item("Favorito jogando em casa", game.favoriteAtHome, game.favoriteAtHome ? "sim" : "nao", game.hasModel),
-    item("BTTS recente acima do limite", game.bttsLast10Percent >= 60, `${game.bttsLast10Percent}%`, game.hasHistory),
-    item("Media de finalizacoes alta", game.avgShotsPerGame > 10, `${game.avgShotsPerGame.toFixed(1)}`, game.hasShots),
-    item("Odd Over 2.5 na faixa", oddOk, game.over25Odd ? game.over25Odd.toFixed(2) : "indisponivel", Boolean(game.over25Odd))
+    item("IA confrontou dados do TotalCorner", hasTotalCorner, hasTotalCorner ? "ok" : "indisponivel", hasTotalCorner),
+    item("Linha de gols favorece +2.5", goalLineOk, goalLine ? goalLine.toFixed(2) : "indisponivel", Boolean(goalLine)),
+    item("Placar vivo para buscar mais gols", scoreOk, game.scoreText || "-", true),
+    item("Minuto util para entrada", usefulMinute, elapsed ? `${elapsed}'` : game.apiStatus || "-", true),
+    item("Pressao por escanteios forte", pressureOk, `${cornerPressure.toFixed(1)}`, game.hasCorners),
+    item("Sem favorito extremo", noExtremeFavorite, Number.isFinite(Number(game.handicapLine)) ? formatHandicapLine(game.handicapLine) : "sem linha", true)
   ];
-  const passed = checks.every((entry) => entry.available && entry.passed);
+  const points = pointsOf(checks);
+  const passed = hasTotalCorner && goalLineOk && scoreOk && usefulMinute && pressureOk && points >= 5;
   return result(game, {
-    confidence: passed ? 82 : 0,
+    confidence: passed ? Math.min(87, 46 + points * 7 + game.totalGoals * 2) : 0,
     odd: game.over25Odd || game.odd || 0,
-    status: passed ? "Entrada" : "Observar"
+    grade: passed ? `IA ${points}/6` : "Descarta",
+    status: passed ? "Entrada" : "Observar",
+    statsPrefix: `IA +2.5 ${passed ? "Aprovado" : "Descarta"} (${points}/6)`,
+    generatedSignals: passed ? ["Over 2.5 gols"] : []
   }, checks);
 }
 
@@ -154,28 +237,31 @@ function scanUnder25(game) {
     }, checks);
   }
 
-  const oddOk = !game.under25Odd || (game.under25Odd >= 1.7 && game.under25Odd <= 2.2);
+  const { elapsed, goalLine, cornerPressure, handicapAbs, scoreGap, hasTotalCorner } = gameContext(game);
+  const usefulMinute = elapsed >= 35 && elapsed <= 78;
+  const goalLineOk = goalLine > 0 && goalLine <= 2.75;
+  const scoreOk = game.totalGoals <= 1 && scoreGap <= 1;
+  const pressureControlled = cornerPressure <= 9.5;
+  const noExtremeFavorite = handicapAbs <= 1.5;
   const checks = [
-    item("Times marcam pouco", game.avgGoalsForBothTeams <= 1.2, `${game.avgGoalsForBothTeams.toFixed(2)}`, game.hasHistory),
-    item("Times sofrem pouco", game.avgGoalsAgainstBothTeams <= 1.2, `${game.avgGoalsAgainstBothTeams.toFixed(2)}`, game.hasHistory),
-    item("Over 2.5 baixo no historico", game.over25Percent <= 40, `${game.over25Percent}%`, game.hasHistory),
-    item("Ambas marcam baixo", game.bttsPercent <= 50, `${game.bttsPercent}%`, game.hasHistory),
-    item("xG baixo", game.xgTotal <= 2.5, game.xgAvailable ? game.xgTotal.toFixed(2) : "indisponivel", game.xgAvailable),
-    item("Finalizacoes certas somadas baixas", game.shotsOnTargetTotal <= 8, `${game.shotsOnTargetTotal.toFixed(1)}`, game.hasShots),
-    item("Poucos gols no primeiro tempo", game.firstHalfGoalPercent < 60, `${game.firstHalfGoalPercent}%`, game.hasHistory),
-    item("Nao e jogo decisivo", !game.decisiveGame, game.decisiveGame ? "decisivo" : "normal", true),
-    item("Odd Under 2.5 na faixa", oddOk, game.under25Odd ? game.under25Odd.toFixed(2) : "sem odd, nao bloqueia", true),
-    item("Liga favoravel ou neutra", game.underFriendlyLeague, game.underFriendlyLeague ? "ok" : "ruim", true)
+    item("IA confrontou dados do TotalCorner", hasTotalCorner, hasTotalCorner ? "ok" : "indisponivel", hasTotalCorner),
+    item("Linha de gols aceita para Under 2.5", goalLineOk, goalLine ? goalLine.toFixed(2) : "indisponivel", Boolean(goalLine)),
+    item("Placar ainda protege o Under 2.5", scoreOk, game.scoreText || "-", true),
+    item("Minuto util para entrada", usefulMinute, elapsed ? `${elapsed}'` : game.apiStatus || "-", true),
+    item("Pressao por escanteios controlada", pressureControlled, `${cornerPressure.toFixed(1)}`, game.hasCorners),
+    item("Sem favorito extremo no handicap", noExtremeFavorite, Number.isFinite(Number(game.handicapLine)) ? formatHandicapLine(game.handicapLine) : "sem linha", true),
+    item("Jogo sem diferenca exagerada no placar", scoreGap <= 1, game.scoreText || "-", true)
   ];
-  const points = checks.filter((entry) => entry.available && entry.passed).length;
-  const grade = points === 10 ? "A+" : points === 9 ? "A" : points === 8 ? "B+" : points === 7 ? "B" : "Descarta";
-  const passed = points >= 8;
+  const points = pointsOf(checks);
+  const passed = hasTotalCorner && goalLineOk && scoreOk && usefulMinute && points >= 6;
+  const grade = passed ? `IA ${points}/7` : "Descarta";
   return result(game, {
-    confidence: passed ? Math.min(92, 58 + points * 4) : 0,
+    confidence: passed ? Math.min(88, 50 + points * 6 - game.totalGoals * 4) : 0,
     odd: game.under25Odd || game.odd || 0,
     grade,
     status: passed ? "Entrada" : "Observar",
-    statsPrefix: `CLASSIFICACAO ${grade} (${points}/10)`
+    statsPrefix: `IA Under 2.5 ${passed ? "Aprovado" : "Descarta"} (${points}/7)`,
+    generatedSignals: passed ? ["Under 2.5 gols"] : []
   }, checks);
 }
 
@@ -200,7 +286,7 @@ function scanUnder35(game) {
   const scoreGap = Math.abs(game.homeGoals - game.awayGoals);
   const stillUsefulMinute = elapsed === 0 || (elapsed >= 10 && elapsed <= 82);
   const lowGoalState = game.totalGoals <= 2 || (game.totalGoals === 3 && elapsed >= 75);
-  const controlledGoalLine = goalLine > 0 && goalLine <= 3.5;
+  const controlledGoalLine = goalLine > 0 && goalLine <= 3.25;
   const noExtremeFavorite = !Number.isFinite(Number(game.handicapLine)) || handicapAbs <= 1.5;
   const scoreControlled = scoreGap <= 2;
   const pressureControlled = cornerPressure <= 10.5;

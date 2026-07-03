@@ -13,7 +13,8 @@ export function useGameAnalysis(games, filters) {
       };
     });
 
-    const mostrarApenasAprovados = Boolean(filters.mostrarApenasAprovados) || selectedMarket === "under35";
+    const iaMarkets = new Set(["over05", "over15", "over25", "under25", "under35"]);
+    const mostrarApenasAprovados = Boolean(filters.mostrarApenasAprovados) || iaMarkets.has(selectedMarket);
     const jogosExibidos = mostrarApenasAprovados
       ? jogosComAnalise.filter((jogo) => jogo.analise.status === "aprovado")
       : jogosComAnalise;
@@ -23,7 +24,7 @@ export function useGameAnalysis(games, filters) {
       if (filters.league !== "all" && game.league !== filters.league) return false;
       if (selectedMarket !== "all" && game.market !== selectedMarket) return false;
       if (Number(game.analise.confianca || 0) < Number(filters.minConfidence || 0)) return false;
-      if (Number(game.analise.odd || 0) < Number(filters.minOdd || 1)) return false;
+      if (Number(game.analise.odd || 0) < Number(filters.minOdd || 0)) return false;
       const search = String(filters.search || "").trim().toLowerCase();
       if (search && !`${game.home} ${game.away} ${game.league}`.toLowerCase().includes(search)) return false;
       return true;
