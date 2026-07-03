@@ -5,7 +5,7 @@ import StatsBox from "../components/StatsBox.jsx";
 import { getMarketLabel } from "../analysis/index.js";
 import { calculateReport, currencyOdd, escapeCsv, getTodayInput } from "../analysis/scoreUtils.js";
 
-const REPORT_MARKETS = ["all", "over05", "over15", "over25", "under25", "corners", "ml"];
+const REPORT_MARKETS = ["all", "over05", "over15", "over25", "under25", "corners", "handicap", "ml"];
 const DEFAULT_CORNER_LINE = "Over 9.5 escanteios";
 
 function isCornerSignal(signal) {

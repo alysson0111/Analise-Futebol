@@ -1,4 +1,4 @@
-const MARKETS = ["over05", "over15", "over25", "under25", "corners", "ml"];
+const MARKETS = ["over05", "over15", "over25", "under25", "corners", "handicap", "ml"];
 
 const MARKET_LABELS = {
   over05: "+0.5 gols",
@@ -6,6 +6,7 @@ const MARKET_LABELS = {
   over25: "+2.5 gols",
   under25: "Under 2.5",
   corners: "Escanteios",
+  handicap: "Handicap",
   ml: "ML"
 };
 
@@ -193,6 +194,28 @@ function scanCorners(game) {
   }, checks);
 }
 
+function formatHandicapLine(value) {
+  if (!Number.isFinite(Number(value))) return "-";
+  const line = Number(value);
+  return `${line > 0 ? "+" : ""}${line}`;
+}
+
+function scanHandicap(game) {
+  const hasLine = Number.isFinite(Number(game.handicapLine));
+  const signal = hasLine ? `Handicap mandante ${formatHandicapLine(game.handicapLine)}` : "";
+  const checks = [
+    item("Linha handicap TotalCorner", hasLine, signal || "indisponivel", hasLine),
+    item("Fonte TotalCorner", Boolean(game.totalCornerSource), game.totalCornerSource || "indisponivel", Boolean(game.totalCornerSource))
+  ];
+
+  return result(game, {
+    confidence: hasLine ? 50 : 0,
+    odd: game.odd || 0,
+    status: "Observar",
+    generatedSignals: signal ? [signal] : []
+  }, checks);
+}
+
 function getRows(payload) {
   return Array.isArray(payload) ? payload : payload.response || payload.data || payload.games || [];
 }
@@ -314,6 +337,9 @@ function normalizeFixture(row) {
     over15Odd: getMarketOdd(row, ["over15Odd", "oddOver15", "overOnePointFiveOdd"], ["over 1.5", "over 1.5 goals", "over 1,5"]),
     over25Odd: getMarketOdd(row, ["over25Odd", "oddOver25", "overTwoPointFiveOdd"], ["over 2.5", "over 2.5 goals", "over 2,5"]),
     homeFavoriteByModel: asBool(row.homeFavoriteByModel || row.favoritoMandanteModelo || row.favoritoEmCasaModelo),
+    handicapLine: Number.isFinite(Number(row.handicapLine)) ? Number(row.handicapLine) : null,
+    handicapSignal: row.handicapSignal || "",
+    totalCornerSource: row.totalCorner ? "TotalCorner" : "",
     avgCornersTotal: asNumber(row.avgCornersTotal || row.mediaEscanteiosConjunta || row.averageCornersTotal || liveCorners),
     favoriteAvgShots: asNumber(row.favoriteAvgShots || row.mediaFinalizacoesFavorito || row.favoriteAverageShots || favoriteShots),
     avgGoalsForBothTeams: asNumber(row.avgGoalsForBothTeams || row.mediaGolsMarcadosTimes),
@@ -342,6 +368,7 @@ export function analyzeFixtures(payload) {
       if (market === "over25") return scanOver25(game);
       if (market === "under25") return scanUnder25(game);
       if (market === "corners") return scanCorners(game);
+      if (market === "handicap") return scanHandicap(game);
       return scanMl(game);
     });
   });
@@ -364,6 +391,8 @@ export function publicGame(game) {
     liveShots: game.liveShots,
     liveShotsOnTarget: game.liveShotsOnTarget,
     source: game.source,
+    handicapLine: game.handicapLine,
+    handicapSignal: game.handicapSignal || "",
     mlPick: game.mlPick || "",
     mlPickLabel: game.mlPickLabel || "",
     dadosJogo: game.dadosJogo || [],

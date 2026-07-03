@@ -430,6 +430,7 @@ function MarketNav({ selectedMarket, setSelectedMarket, marketCounts, selectedPa
     ["over25", "+2.5 gols", marketCounts.over25 || 0],
     ["under25", "Under 2.5", marketCounts.under25 || 0],
     ["corners", "Escanteios", marketCounts.corners || 0],
+    ["handicap", "Handicap", marketCounts.handicap || 0],
     ["ml", "ML", marketCounts.ml || 0]
   ];
 

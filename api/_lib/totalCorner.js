@@ -67,6 +67,11 @@ function parseCornerLine(value) {
   return match ? asNumber(match[1]) : 0;
 }
 
+function parseHandicapLine(value) {
+  const match = cleanLine(value).match(/([+-]?\d+(?:\.\d+)?)\s*(?:\([^)]+\))?\s*$/);
+  return match ? asNumber(match[1]) : null;
+}
+
 function parseBlock(block) {
   const lines = String(block || "").split("\n").map(cleanLine).filter(Boolean);
   const headerIndex = lines.findIndex((line) => /^\d{2}:\d{2}\s+/.test(line));
@@ -77,7 +82,9 @@ function parseBlock(block) {
   if (!scoreMatch) return null;
 
   const beforeScore = scoreMatch[1];
-  const afterScore = scoreMatch[4].replace(/\s+[+-]?\d+(?:\.\d+)?(?:\s*\([^)]+\))?\s*$/, "");
+  const afterScoreRaw = scoreMatch[4];
+  const handicapLine = parseHandicapLine(afterScoreRaw);
+  const afterScore = afterScoreRaw.replace(/\s+[+-]?\d+(?:\.\d+)?(?:\s*\([^)]+\))?\s*$/, "");
   const timeMatch = beforeScore.match(/^(\d{2}:\d{2})(?:\s+(\d{1,3}|Intervalo|HT|FT))?\s+(.+)$/i);
   if (!timeMatch) return null;
 
@@ -98,6 +105,7 @@ function parseBlock(block) {
     homeCorners: corners.home,
     awayCorners: corners.away,
     liveCorners: corners.home + corners.away,
+    handicapLine,
     cornerLine,
     source: "TotalCorner"
   };
@@ -138,6 +146,8 @@ export function mergeTotalCornerRows(rows, totalCornerRows) {
     return {
       ...row,
       totalCorner: match,
+      handicapLine: match.handicapLine,
+      handicapSignal: match.handicapLine === null ? "" : `Handicap mandante ${match.handicapLine > 0 ? "+" : ""}${match.handicapLine}`,
       avgCornersTotal: match.cornerLine || match.liveCorners,
       mediaEscanteiosConjunta: match.cornerLine || match.liveCorners,
       liveStats: [
