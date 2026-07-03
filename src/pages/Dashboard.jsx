@@ -6,7 +6,7 @@ import { getMarketLabel } from "../analysis/index.js";
 import { calculateReport, currencyOdd, escapeCsv, getTodayInput } from "../analysis/scoreUtils.js";
 
 const REPORT_MARKETS = ["all", "over05", "over15", "over25", "under25", "corners", "ml"];
-const DEFAULT_CORNER_LINES = ["Over 8.5 escanteios", "Over 9.5 escanteios", "Over 10.5 escanteios"];
+const DEFAULT_CORNER_LINE = "Over 9.5 escanteios";
 
 function isCornerSignal(signal) {
   const market = String(signal.market || signal.marketLabel || "").toLowerCase();
@@ -15,8 +15,8 @@ function isCornerSignal(signal) {
 
 function getSignalText(signal) {
   const lines = Array.isArray(signal.signalLines) ? signal.signalLines.filter(Boolean) : [];
+  if (isCornerSignal(signal)) return lines.find((line) => /9\.5/.test(String(line))) || lines[0] || DEFAULT_CORNER_LINE;
   if (lines.length) return lines.join(", ");
-  if (isCornerSignal(signal)) return DEFAULT_CORNER_LINES.join(", ");
   if (signal.market === "ml") return signal.mlPickLabel ? `ML ${signal.mlPickLabel}` : "ML";
   return signal.marketLabel || getMarketLabel(signal.market) || "-";
 }

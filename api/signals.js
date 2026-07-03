@@ -28,7 +28,7 @@ function cleanSignal(input) {
   ].map(String).filter(Boolean);
   const market = String(analysis.mercado || input.market || "");
   const normalizedSignalLines = market === "corners" && !signalLines.length
-    ? ["Over 8.5 escanteios", "Over 9.5 escanteios", "Over 10.5 escanteios"]
+    ? ["Over 9.5 escanteios"]
     : [...new Set(signalLines)];
   const liveCorners = Number(input.liveCorners);
 

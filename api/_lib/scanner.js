@@ -189,7 +189,7 @@ function scanCorners(game) {
     confidence: probability,
     odd: game.odd || 0,
     status: passed ? "Entrada" : "Observar",
-    generatedSignals: passed ? ["Over 8.5 escanteios", "Over 9.5 escanteios", "Over 10.5 escanteios"] : []
+    generatedSignals: passed ? ["Over 9.5 escanteios"] : []
   }, checks);
 }
 

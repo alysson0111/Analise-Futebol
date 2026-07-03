@@ -190,7 +190,7 @@ function cornerGame(prediction, date) {
   return {
     ...game,
     confidence: confidenceFromCorners(prediction),
-    signals: ["Over 8.5 escanteios", "Over 9.5 escanteios", "Over 10.5 escanteios"],
+    signals: ["Over 9.5 escanteios"],
     stats: [
       "FOREBET | Mercado | Escanteios",
       `FOREBET | Previsao | ${prediction.side} 9.5 cantos`,
