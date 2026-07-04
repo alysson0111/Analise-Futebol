@@ -1,4 +1,6 @@
 import { getDb, now } from "./_lib/firebase.js";
+import { analyzeFixtures } from "./_lib/scanner.js";
+import { fetchTotalCornerToday, totalCornerRowsToFixtures } from "./_lib/totalCorner.js";
 
 const FINISHED_STATUSES = new Set(["FT", "AET", "PEN"]);
 
@@ -64,6 +66,17 @@ function normalizeMarketName(value) {
 function parseScoreTotal(scoreText) {
   const parts = String(scoreText || "").split("x").map((part) => Number(part.trim()));
   return parts.length === 2 && parts.every(Number.isFinite) ? parts[0] + parts[1] : 0;
+}
+
+function elapsedFromStatus(value) {
+  const match = String(value || "").match(/\d{1,3}/);
+  return match ? asNumber(match[0]) : 0;
+}
+
+function isFinishedGame(game) {
+  const status = String(game.apiStatus || game.fixture?.status?.short || "").toUpperCase();
+  const elapsed = asNumber(game.fixture?.status?.elapsed || game.elapsed || elapsedFromStatus(game.liveStatus));
+  return FINISHED_STATUSES.has(status) || elapsed >= 90;
 }
 
 function asNumber(value, fallback = 0) {
@@ -148,7 +161,7 @@ function parseForebetMatchScore(markdown) {
 function getSignalSettlement(signal, game) {
   const market = normalizeMarketName(signal.market || signal.marketLabel);
   const totalGoals = Number.isFinite(Number(game.totalGoals)) ? Number(game.totalGoals) : parseScoreTotal(game.scoreText);
-  const finished = FINISHED_STATUSES.has(String(game.apiStatus || "").toUpperCase());
+  const finished = isFinishedGame(game);
   const corners = Number(game.liveCorners || 0);
   const [homeGoals, awayGoals] = String(game.scoreText || "").split("x").map((part) => Number(part.trim()));
   const mlResult = Number.isFinite(homeGoals) && Number.isFinite(awayGoals)
@@ -194,16 +207,90 @@ function getSignalSettlement(signal, game) {
   return "";
 }
 
-async function settleSignalsFromForebet(db, signals) {
-  void db;
-  return signals;
+function normalizeTeam(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function teamMatchScore(a, b) {
+  const left = normalizeTeam(a);
+  const right = normalizeTeam(b);
+  if (!left || !right) return 0;
+  if (left === right) return 1;
+  if (left.includes(right) || right.includes(left)) return 0.9;
+  const leftTokens = new Set(left.split(" ").filter((token) => token.length > 2));
+  const rightTokens = new Set(right.split(" ").filter((token) => token.length > 2));
+  if (!leftTokens.size || !rightTokens.size) return 0;
+  const hits = [...leftTokens].filter((token) => rightTokens.has(token)).length;
+  return hits / Math.max(leftTokens.size, rightTokens.size);
+}
+
+function findCurrentGame(signal, games) {
+  const sameSource = games.filter((game) => game.sourceId === signal.sourceId);
+  const sourceMatch = sameSource.find((game) => game.market === signal.market) || sameSource[0];
+  if (sourceMatch) return sourceMatch;
+
+  let best = null;
+  let bestScore = 0;
+  for (const game of games) {
+    if (game.market !== signal.market) continue;
+    const score = (teamMatchScore(signal.home, game.home) + teamMatchScore(signal.away, game.away)) / 2;
+    if (score > bestScore) {
+      best = game;
+      bestScore = score;
+    }
+  }
+  return bestScore >= 0.65 ? best : null;
+}
+
+async function settleSignalsFromTotalCorner(db, signals) {
+  const pending = signals.filter((signal) => signal.id && signal.result === "pendente");
+  if (!pending.length) return signals;
+
+  let games = [];
+  try {
+    const totalCornerRows = await fetchTotalCornerToday();
+    games = analyzeFixtures({ response: totalCornerRowsToFixtures(totalCornerRows) });
+  } catch {
+    return signals;
+  }
+
+  const updates = new Map();
+  for (const signal of pending) {
+    const game = findCurrentGame(signal, games);
+    if (!game) continue;
+    const result = getSignalSettlement(signal, game);
+    if (!result) continue;
+
+    const settlement = {
+      result,
+      scoreText: game.scoreText || signal.scoreText || "",
+      liveStatus: game.liveStatus || signal.liveStatus || "",
+      dateText: game.dateText || signal.dateText || "",
+      mlPick: game.mlPick || signal.mlPick || "",
+      mlPickLabel: game.mlPickLabel || signal.mlPickLabel || "",
+      liveCorners: Number.isFinite(Number(game.liveCorners)) ? Number(game.liveCorners) : signal.liveCorners,
+      signalLines: Array.isArray(game.generatedSignals) && game.generatedSignals.length ? game.generatedSignals : signal.signalLines || [],
+      settledAtText: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
+      updatedAt: now()
+    };
+    updates.set(signal.id, settlement);
+    await db.collection("sinais").doc(signal.id).update(settlement);
+  }
+
+  return signals.map((signal) => updates.has(signal.id) ? { ...signal, ...updates.get(signal.id) } : signal);
 }
 
 async function listSignals(res) {
   const db = getDb();
   const snapshot = await db.collection("sinais").orderBy("createdAt", "desc").limit(300).get();
   const signals = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  const settledSignals = await settleSignalsFromForebet(db, signals);
+  const settledSignals = await settleSignalsFromTotalCorner(db, signals);
   send(res, 200, { signals: settledSignals });
 }
 

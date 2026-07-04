@@ -164,7 +164,8 @@ function getGameTotalGoals(game) {
 
 function isFinishedGame(game) {
   const status = String(game?.apiStatus || "").toUpperCase();
-  return FINISHED_STATUSES.has(status);
+  const elapsed = Number(String(game?.liveStatus || game?.fixture?.status?.elapsed || "").match(/\d{1,3}/)?.[0] || 0);
+  return FINISHED_STATUSES.has(status) || elapsed >= 90;
 }
 
 function normalizeMarketName(value) {
