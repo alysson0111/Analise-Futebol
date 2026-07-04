@@ -252,16 +252,38 @@ async function settleSignalsFromTotalCorner(db, signals) {
   const pending = signals.filter((signal) => signal.id && signal.result === "pendente");
   if (!pending.length) return signals;
 
+  const updates = new Map();
+  for (const signal of pending) {
+    const storedResult = getSignalSettlement(signal, signal);
+    if (!storedResult) continue;
+    const settlement = {
+      result: storedResult,
+      scoreText: signal.scoreText || "",
+      liveStatus: signal.liveStatus || "",
+      dateText: signal.dateText || "",
+      liveCorners: Number.isFinite(Number(signal.liveCorners)) ? Number(signal.liveCorners) : null,
+      signalLines: signal.signalLines || [],
+      settledAtText: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
+      updatedAt: now()
+    };
+    updates.set(signal.id, settlement);
+    await db.collection("sinais").doc(signal.id).update(settlement);
+  }
+
+  const remaining = pending.filter((signal) => !updates.has(signal.id));
+  if (!remaining.length) {
+    return signals.map((signal) => updates.has(signal.id) ? { ...signal, ...updates.get(signal.id) } : signal);
+  }
+
   let games = [];
   try {
     const totalCornerRows = await fetchTotalCornerToday();
     games = analyzeFixtures({ response: totalCornerRowsToFixtures(totalCornerRows) });
   } catch {
-    return signals;
+    return signals.map((signal) => updates.has(signal.id) ? { ...signal, ...updates.get(signal.id) } : signal);
   }
 
-  const updates = new Map();
-  for (const signal of pending) {
+  for (const signal of remaining) {
     const game = findCurrentGame(signal, games);
     if (!game) continue;
     const result = getSignalSettlement(signal, game);
