@@ -74,6 +74,7 @@ function elapsedFromStatus(value) {
 }
 
 function isFinishedGame(game) {
+  if (game.forceFinished) return true;
   const status = String(game.apiStatus || game.fixture?.status?.short || "").toUpperCase();
   const elapsed = asNumber(game.fixture?.status?.elapsed || game.elapsed || elapsedFromStatus(game.liveStatus));
   return FINISHED_STATUSES.has(status) || elapsed >= 90;
@@ -254,7 +255,11 @@ async function settleSignalsFromTotalCorner(db, signals) {
 
   const updates = new Map();
   for (const signal of pending) {
-    const storedResult = getSignalSettlement(signal, signal);
+    const createdSeconds = Number(signal.createdAt?._seconds || 0);
+    const oldEnough = createdSeconds > 0 && Date.now() - createdSeconds * 1000 > 3 * 60 * 60 * 1000;
+    const liveStatus = String(signal.liveStatus || "").toUpperCase();
+    const canExpire = oldEnough && liveStatus !== "NS" && Boolean(signal.scoreText);
+    const storedResult = getSignalSettlement(signal, { ...signal, forceFinished: canExpire });
     if (!storedResult) continue;
     const settlement = {
       result: storedResult,
