@@ -13,7 +13,7 @@ export function useGameAnalysis(games, filters) {
       };
     });
 
-    const iaMarkets = new Set(["over05", "over15", "over25", "under25", "under35"]);
+    const iaMarkets = new Set(["over05", "over15", "over25", "under25", "under35", "ml"]);
     const mostrarApenasAprovados = Boolean(filters.mostrarApenasAprovados) || iaMarkets.has(selectedMarket);
     const jogosExibidos = mostrarApenasAprovados
       ? jogosComAnalise.filter((jogo) => jogo.analise.status === "aprovado")

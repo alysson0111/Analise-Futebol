@@ -68,20 +68,49 @@ function pickFromPrediction(prediction, probabilities = []) {
 
 function scanMl(game) {
   const probabilities = Array.isArray(game.mlProbabilities) ? game.mlProbabilities.map((value) => asNumber(value)) : [];
-  const pick = game.mlPick || pickFromPrediction(game.mlPrediction, probabilities);
-  const confidence = probabilities.length >= 3 ? Math.max(...probabilities) : asNumber(game.mlConfidence);
+  const handicapLine = Number(game.handicapLine);
+  const hasHandicap = Number.isFinite(handicapLine);
+  const hasTotalCorner = Boolean(game.totalCornerSource);
+  const scoreGap = game.homeGoals - game.awayGoals;
+  const elapsed = asNumber(game.elapsed);
+  const goalLine = asNumber(game.goalLine || game.totalCornerGoalLine);
+  const fromForebet = game.mlPick || pickFromPrediction(game.mlPrediction, probabilities);
+  const fromHandicap = hasHandicap
+    ? (handicapLine <= -0.25 ? "home" : handicapLine >= 0.25 ? "away" : "")
+    : "";
+  const fromScore = scoreGap > 0 ? "home" : scoreGap < 0 ? "away" : "";
+  const drawLean = hasHandicap && Math.abs(handicapLine) <= 0.25 && scoreGap === 0 && goalLine > 0 && goalLine <= 2.75;
+  const pick = fromForebet || fromHandicap || fromScore || (drawLean ? "draw" : "");
+  const favoriteStrength = hasHandicap ? Math.abs(handicapLine) : 0;
+  const favoriteBase = favoriteStrength >= 1.5 ? 76 : favoriteStrength >= 1 ? 72 : favoriteStrength >= 0.5 ? 66 : favoriteStrength >= 0.25 ? 61 : 0;
+  const scoreBoost = pick && fromScore === pick ? Math.min(12, Math.abs(scoreGap) * 5 + (elapsed >= 60 ? 5 : 0)) : 0;
+  const scorePenalty = pick && fromScore && fromScore !== pick ? 24 : 0;
+  const drawConfidence = pick === "draw" ? (drawLean ? 62 : 0) : 0;
+  const forebetConfidence = probabilities.length >= 3 ? Math.max(...probabilities) : asNumber(game.mlConfidence);
+  const confidence = Math.max(forebetConfidence, drawConfidence, favoriteBase + scoreBoost - scorePenalty);
   const hasPrediction = Boolean(pick);
-  const passed = hasPrediction && confidence >= 55;
+  const scoreConfirmsPick = elapsed === 0
+    || !fromScore
+    || fromScore === pick
+    || (elapsed < 60 && favoriteStrength >= 0.75);
+  const lateGameSafe = elapsed === 0 || elapsed < 70 || fromScore === pick;
+  const passed = hasTotalCorner && hasPrediction && confidence >= 68 && scoreConfirmsPick && lateGameSafe;
   const checks = [
+    item("IA confrontou dados do TotalCorner", hasTotalCorner, hasTotalCorner ? "ok" : "indisponivel", hasTotalCorner),
     item("Vencedor previsto", hasPrediction, mlLabel(pick, game), hasPrediction),
-    item("Probabilidade ML >= 55%", confidence >= 55, confidence ? `${Math.round(confidence)}%` : "indisponivel", Boolean(confidence)),
-    item("Base de gols +2.5", game.mlAvgGoals > 0, game.mlAvgGoals ? `${game.mlAvgGoals.toFixed(2)} gols` : "indisponivel", Boolean(game.mlAvgGoals))
+    item("Confianca ML >= 68%", confidence >= 68, confidence ? `${Math.round(confidence)}%` : "indisponivel", Boolean(confidence)),
+    item("Linha handicap usada", hasHandicap, hasHandicap ? formatHandicapLine(handicapLine) : "indisponivel", hasHandicap),
+    item("Placar confirma entrada", scoreConfirmsPick, game.scoreText || "-", true),
+    item("Evita ML contra placar no fim", lateGameSafe, elapsed ? `${elapsed}'` : game.apiStatus || "-", true),
+    item("Linha de gols como contexto", goalLine > 0, goalLine ? goalLine.toFixed(2) : "indisponivel", Boolean(goalLine))
   ];
 
   return result(game, {
     confidence: passed ? Math.round(confidence) : 0,
     odd: game.mlOdd || game.odd || 0,
     status: passed ? "Entrada" : "Observar",
+    grade: passed ? "IA ML" : "Descarta",
+    statsPrefix: `IA ML ${passed ? "Aprovado" : "Descarta"}`,
     mlPick: pick,
     mlPickLabel: mlLabel(pick, game),
     generatedSignals: passed ? [`ML ${mlLabel(pick, game)}`] : []
