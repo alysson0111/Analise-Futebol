@@ -1,5 +1,9 @@
 const TOTALCORNER_TODAY_URL = "https://www.totalcorner.com/pt/match/today";
 
+function totalCornerDateUrl(dateIso) {
+  return `https://www.totalcorner.com/pt/match/today/${dateIso}`;
+}
+
 function readerUrl(url) {
   const separator = url.includes("?") ? "&" : "?";
   return `https://r.jina.ai/http://${url}${separator}_=${Date.now()}`;
@@ -100,7 +104,7 @@ function parseBlock(block) {
   const afterScoreRaw = scoreMatch[4];
   const handicapLine = parseHandicapLine(afterScoreRaw);
   const afterScore = afterScoreRaw.replace(/\s+[+-]?\d+(?:\.\d+)?(?:\s*\([^)]+\))?\s*$/, "");
-  const timeMatch = beforeScore.match(/^(\d{2}:\d{2})(?:\s+(\d{1,3}|Intervalo|HT|FT))?\s+(.+)$/i);
+  const timeMatch = beforeScore.match(/^(\d{2}:\d{2})(?:\s+(\d{1,3}|Intervalo|Integral|HT|FT))?\s+(.+)$/i);
   if (!timeMatch) return null;
 
   const cornerIndex = lines.findIndex((line, index) => index > headerIndex && isScoreLine(line));
@@ -146,7 +150,7 @@ function parseCompactRecord(record) {
     .replace(/\s+/g, " ")
     .trim();
 
-  const timeMatch = beforeHome.match(/(\d{2}:\d{2})(?:\s+(\d{1,3}|Intervalo|HT|FT))?/i);
+  const timeMatch = beforeHome.match(/(\d{2}:\d{2})(?:\s+(\d{1,3}|Intervalo|Integral|HT|FT))?/i);
   const goalsMatch = betweenTeams.match(/(\d+)\s*-\s*(\d+)/);
   if (!timeMatch || !goalsMatch) return null;
 
@@ -211,7 +215,7 @@ function statusInfo(status) {
   const value = cleanLine(status);
   if (/^\d{1,3}$/.test(value)) return { elapsed: asNumber(value), short: "LIVE", liveStatus: `${value}'` };
   if (/^Intervalo|HT$/i.test(value)) return { elapsed: 45, short: "HT", liveStatus: "HT" };
-  if (/^FT$/i.test(value)) return { elapsed: 90, short: "FT", liveStatus: "FT" };
+  if (/^Integral|FT$/i.test(value)) return { elapsed: 90, short: "FT", liveStatus: "FT" };
   return { elapsed: 0, short: value ? "LIVE" : "NS", liveStatus: value || "Pre-jogo" };
 }
 
@@ -309,6 +313,19 @@ export function mergeTotalCornerRows(rows, totalCornerRows) {
 
 export async function fetchTotalCornerToday() {
   const response = await fetch(readerUrl(TOTALCORNER_TODAY_URL), {
+    headers: {
+      "User-Agent": "Mozilla/5.0 Analise-Futebol/1.0",
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache"
+    }
+  });
+
+  if (!response.ok) throw new Error(`TotalCorner retornou ${response.status}.`);
+  return parseTotalCornerMarkdown(await response.text());
+}
+
+export async function fetchTotalCornerDate(dateIso) {
+  const response = await fetch(readerUrl(totalCornerDateUrl(dateIso)), {
     headers: {
       "User-Agent": "Mozilla/5.0 Analise-Futebol/1.0",
       "Cache-Control": "no-cache",

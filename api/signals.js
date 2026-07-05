@@ -1,6 +1,6 @@
 import { getDb, now } from "./_lib/firebase.js";
 import { analyzeFixtures } from "./_lib/scanner.js";
-import { fetchTotalCornerToday, totalCornerRowsToFixtures } from "./_lib/totalCorner.js";
+import { fetchTotalCornerDate, fetchTotalCornerToday, totalCornerRowsToFixtures } from "./_lib/totalCorner.js";
 
 const FINISHED_STATUSES = new Set(["FT", "AET", "PEN"]);
 
@@ -119,6 +119,22 @@ function parsePtDateTime(dateText, stats = []) {
   const minute = timeMatch ? timeMatch[2] : "00";
   const date = new Date(`${year}-${month}-${day}T${hour}:${minute}:00-03:00`);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function ptDateToIso(dateText) {
+  const match = String(dateText || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return "";
+  return `${match[3]}-${match[2]}-${match[1]}`;
+}
+
+function uniqueRows(rows) {
+  const seen = new Set();
+  return (rows || []).filter((row) => {
+    const key = `${row.league || ""}|${row.home || ""}|${row.away || ""}|${row.time || ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function shouldCheckForebetSettlement(signal) {
@@ -339,8 +355,17 @@ async function settleSignalsFromTotalCorner(db, signals) {
   const updates = new Map();
   let games = [];
   try {
+    const dateIsos = [...new Set(pending.map((signal) => ptDateToIso(signal.dateText)).filter(Boolean))].slice(0, 4);
     const totalCornerRows = await fetchTotalCornerToday();
-    games = analyzeFixtures({ response: totalCornerRowsToFixtures(totalCornerRows) });
+    const datedRows = [];
+    for (const dateIso of dateIsos) {
+      try {
+        datedRows.push(...await fetchTotalCornerDate(dateIso));
+      } catch {
+        // A current live update is still better than failing all settlements.
+      }
+    }
+    games = analyzeFixtures({ response: totalCornerRowsToFixtures(uniqueRows([...totalCornerRows, ...datedRows])) });
   } catch {
     return signals;
   }
