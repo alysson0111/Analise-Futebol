@@ -211,6 +211,62 @@ function getSignalSettlement(signal, game) {
   return "";
 }
 
+function shouldResetUnverifiedSettlement(signal) {
+  if (signal.result !== "green" && signal.result !== "red") return false;
+  if (isFinishedGame(signal)) return false;
+
+  const market = normalizeMarketName(signal.market || signal.marketLabel);
+  const totalGoals = parseScoreTotal(signal.scoreText);
+  const corners = Number(signal.liveCorners || 0);
+
+  if (market.includes("over05") || market.includes("+0.5")) {
+    return signal.result === "red" && totalGoals < 1;
+  }
+
+  if (market.includes("over15") || market.includes("+1.5")) {
+    return signal.result === "red" && totalGoals < 2;
+  }
+
+  if (market.includes("over25") || market.includes("+2.5")) {
+    return signal.result === "red" && totalGoals < 3;
+  }
+
+  if (market.includes("under25") || market.includes("under2.5")) {
+    return signal.result === "green" && totalGoals < 3;
+  }
+
+  if (market.includes("under35") || market.includes("under3.5")) {
+    return signal.result === "green" && totalGoals < 4;
+  }
+
+  if (market.includes("corner") || market.includes("escanteio")) {
+    return signal.result === "red" && corners < 9;
+  }
+
+  if (market === "ml" || market.includes("moneyline")) {
+    return true;
+  }
+
+  return false;
+}
+
+async function resetUnverifiedSettlements(db, signals) {
+  const updates = new Map();
+  for (const signal of signals) {
+    if (!signal.id || !shouldResetUnverifiedSettlement(signal)) continue;
+    const update = {
+      result: "pendente",
+      settledAtText: "",
+      updatedAt: now()
+    };
+    updates.set(signal.id, update);
+    await db.collection("sinais").doc(signal.id).update(update);
+  }
+  return updates.size
+    ? signals.map((signal) => updates.has(signal.id) ? { ...signal, ...updates.get(signal.id) } : signal)
+    : signals;
+}
+
 function normalizeTeam(value) {
   return String(value || "")
     .normalize("NFD")
@@ -281,41 +337,15 @@ async function settleSignalsFromTotalCorner(db, signals) {
   if (!pending.length) return signals;
 
   const updates = new Map();
-  for (const signal of pending) {
-    const createdSeconds = Number(signal.createdAt?._seconds || 0);
-    const oldEnough = createdSeconds > 0 && Date.now() - createdSeconds * 1000 > 3 * 60 * 60 * 1000;
-    const liveStatus = String(signal.liveStatus || "").toUpperCase();
-    const canExpire = oldEnough && liveStatus !== "NS" && Boolean(signal.scoreText);
-    const storedResult = getSignalSettlement(signal, { ...signal, forceFinished: canExpire });
-    if (!storedResult) continue;
-    const settlement = {
-      result: storedResult,
-      scoreText: signal.scoreText || "",
-      liveStatus: signal.liveStatus || "",
-      dateText: signal.dateText || "",
-      liveCorners: Number.isFinite(Number(signal.liveCorners)) ? Number(signal.liveCorners) : null,
-      signalLines: signal.signalLines || [],
-      settledAtText: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
-      updatedAt: now()
-    };
-    updates.set(signal.id, settlement);
-    await db.collection("sinais").doc(signal.id).update(settlement);
-  }
-
-  const remaining = pending.filter((signal) => !updates.has(signal.id));
-  if (!remaining.length) {
-    return signals.map((signal) => updates.has(signal.id) ? { ...signal, ...updates.get(signal.id) } : signal);
-  }
-
   let games = [];
   try {
     const totalCornerRows = await fetchTotalCornerToday();
     games = analyzeFixtures({ response: totalCornerRowsToFixtures(totalCornerRows) });
   } catch {
-    return signals.map((signal) => updates.has(signal.id) ? { ...signal, ...updates.get(signal.id) } : signal);
+    return signals;
   }
 
-  for (const signal of remaining) {
+  for (const signal of pending) {
     const game = findCurrentGame(signal, games);
     if (!game) continue;
     const result = getSignalSettlement(signal, game);
@@ -338,7 +368,8 @@ async function listSignals(res) {
   const db = getDb();
   const snapshot = await db.collection("sinais").orderBy("createdAt", "desc").limit(300).get();
   const signals = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  const settledSignals = await settleSignalsFromTotalCorner(db, signals);
+  const verifiedSignals = await resetUnverifiedSettlements(db, signals);
+  const settledSignals = await settleSignalsFromTotalCorner(db, verifiedSignals);
   send(res, 200, { signals: settledSignals });
 }
 
