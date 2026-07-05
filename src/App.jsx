@@ -313,6 +313,7 @@ export default function App() {
     pendingSignals.forEach((signal) => {
       const candidates = gamesBySource.get(signal.sourceId) || [];
       const game = candidates.find((item) => item.market === signal.market) || candidates[0];
+      if (!game) return;
       const result = getSignalSettlement(signal, game);
       const settlement = {
         scoreText: game.scoreText || signal.scoreText || "",
