@@ -137,6 +137,17 @@ function uniqueRows(rows) {
   });
 }
 
+function shouldFetchDatedResult(signal) {
+  const liveStatus = String(signal.liveStatus || "").toUpperCase();
+  if (!signal.dateText || liveStatus === "NS" || liveStatus === "PRE-JOGO") return false;
+  if (FINISHED_STATUSES.has(liveStatus)) return true;
+
+  const elapsed = elapsedFromStatus(liveStatus);
+  const createdSeconds = Number(signal.createdAt?._seconds || 0);
+  const olderThanOneHour = createdSeconds > 0 && Date.now() - createdSeconds * 1000 > 60 * 60 * 1000;
+  return elapsed >= 45 || olderThanOneHour;
+}
+
 function shouldCheckForebetSettlement(signal) {
   if (!forebetMatchUrl(signal)) return false;
   const liveStatus = String(signal.liveStatus || "").toUpperCase().replace("'", "");
@@ -355,17 +366,18 @@ async function settleSignalsFromTotalCorner(db, signals) {
   const updates = new Map();
   let games = [];
   try {
-    const dateIsos = [...new Set(pending.map((signal) => ptDateToIso(signal.dateText)).filter(Boolean))].slice(0, 4);
-    const totalCornerRows = await fetchTotalCornerToday();
-    const datedRows = [];
-    for (const dateIso of dateIsos) {
-      try {
-        datedRows.push(...await fetchTotalCornerDate(dateIso));
-      } catch {
-        // A current live update is still better than failing all settlements.
-      }
-    }
-    games = analyzeFixtures({ response: totalCornerRowsToFixtures(uniqueRows([...totalCornerRows, ...datedRows])) });
+    const dateIsos = [...new Set(
+      pending
+        .filter(shouldFetchDatedResult)
+        .map((signal) => ptDateToIso(signal.dateText))
+        .filter(Boolean)
+    )].slice(0, 2);
+    const rowResults = await Promise.allSettled([
+      fetchTotalCornerToday(),
+      ...dateIsos.map((dateIso) => fetchTotalCornerDate(dateIso))
+    ]);
+    const totalCornerRows = rowResults.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+    games = analyzeFixtures({ response: totalCornerRowsToFixtures(uniqueRows(totalCornerRows)) });
   } catch {
     return signals;
   }
