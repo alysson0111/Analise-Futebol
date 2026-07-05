@@ -7,6 +7,9 @@ const FINISHED_STATUSES = new Set(["FT", "AET", "PEN"]);
 function send(res, status, body) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
   res.end(JSON.stringify(body));
 }
 
@@ -249,6 +252,30 @@ function findCurrentGame(signal, games) {
   return bestScore >= 0.65 ? best : null;
 }
 
+function currentGameUpdate(signal, game, result) {
+  return {
+    result: result || signal.result || "pendente",
+    scoreText: game.scoreText || signal.scoreText || "",
+    liveStatus: game.liveStatus || signal.liveStatus || "",
+    dateText: game.dateText || signal.dateText || "",
+    mlPick: game.mlPick || signal.mlPick || "",
+    mlPickLabel: game.mlPickLabel || signal.mlPickLabel || "",
+    liveCorners: Number.isFinite(Number(game.liveCorners)) ? Number(game.liveCorners) : signal.liveCorners,
+    signalLines: Array.isArray(game.generatedSignals) && game.generatedSignals.length ? game.generatedSignals : signal.signalLines || []
+  };
+}
+
+function shouldPersistCurrentUpdate(signal, update) {
+  return update.result !== signal.result
+    || String(update.scoreText || "") !== String(signal.scoreText || "")
+    || String(update.liveStatus || "") !== String(signal.liveStatus || "")
+    || String(update.dateText || "") !== String(signal.dateText || "")
+    || String(update.mlPick || "") !== String(signal.mlPick || "")
+    || String(update.mlPickLabel || "") !== String(signal.mlPickLabel || "")
+    || Number(update.liveCorners ?? -1) !== Number(signal.liveCorners ?? -1)
+    || JSON.stringify(update.signalLines || []) !== JSON.stringify(signal.signalLines || []);
+}
+
 async function settleSignalsFromTotalCorner(db, signals) {
   const pending = signals.filter((signal) => signal.id && signal.result === "pendente");
   if (!pending.length) return signals;
@@ -292,18 +319,12 @@ async function settleSignalsFromTotalCorner(db, signals) {
     const game = findCurrentGame(signal, games);
     if (!game) continue;
     const result = getSignalSettlement(signal, game);
-    if (!result) continue;
+    const currentUpdate = currentGameUpdate(signal, game, result);
+    if (!shouldPersistCurrentUpdate(signal, currentUpdate)) continue;
 
     const settlement = {
-      result,
-      scoreText: game.scoreText || signal.scoreText || "",
-      liveStatus: game.liveStatus || signal.liveStatus || "",
-      dateText: game.dateText || signal.dateText || "",
-      mlPick: game.mlPick || signal.mlPick || "",
-      mlPickLabel: game.mlPickLabel || signal.mlPickLabel || "",
-      liveCorners: Number.isFinite(Number(game.liveCorners)) ? Number(game.liveCorners) : signal.liveCorners,
-      signalLines: Array.isArray(game.generatedSignals) && game.generatedSignals.length ? game.generatedSignals : signal.signalLines || [],
-      settledAtText: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
+      ...currentUpdate,
+      settledAtText: result ? new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : signal.settledAtText || "",
       updatedAt: now()
     };
     updates.set(signal.id, settlement);

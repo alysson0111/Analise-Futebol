@@ -314,9 +314,6 @@ export default function App() {
       const candidates = gamesBySource.get(signal.sourceId) || [];
       const game = candidates.find((item) => item.market === signal.market) || candidates[0];
       const result = getSignalSettlement(signal, game);
-      if (!result) return;
-
-      settlingSignalIdsRef.current.add(signal.id);
       const settlement = {
         scoreText: game.scoreText || signal.scoreText || "",
         liveStatus: game.liveStatus || signal.liveStatus || "",
@@ -326,11 +323,20 @@ export default function App() {
         liveCorners: Number.isFinite(Number(game.liveCorners)) ? Number(game.liveCorners) : signal.liveCorners,
         signalLines: Array.isArray(game.signals) && game.signals.length ? game.signals : signal.signalLines || []
       };
-      updateSignalResult(signal.id, result, settlement)
+      const changed = result
+        || String(settlement.scoreText || "") !== String(signal.scoreText || "")
+        || String(settlement.liveStatus || "") !== String(signal.liveStatus || "")
+        || String(settlement.dateText || "") !== String(signal.dateText || "")
+        || Number(settlement.liveCorners ?? -1) !== Number(signal.liveCorners ?? -1);
+      if (!changed) return;
+
+      settlingSignalIdsRef.current.add(signal.id);
+      updateSignalResult(signal.id, result || "pendente", settlement)
         .then((payload) => {
           if (cancelled) return;
-          setSignals((current) => current.map((item) => item.id === signal.id ? { ...item, ...settlement, ...payload, result } : item));
-          setBankStatus(`Sinal ${result.toUpperCase()} atualizado automaticamente.`);
+          setSignals((current) => current.map((item) => item.id === signal.id ? { ...item, ...settlement, ...payload, result: result || "pendente" } : item));
+          if (!result) settlingSignalIdsRef.current.delete(signal.id);
+          setBankStatus(result ? `Sinal ${result.toUpperCase()} atualizado automaticamente.` : "Placar do sinal atualizado automaticamente.");
         })
         .catch((error) => {
           settlingSignalIdsRef.current.delete(signal.id);

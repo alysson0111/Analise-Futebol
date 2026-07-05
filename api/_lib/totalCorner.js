@@ -1,7 +1,8 @@
 const TOTALCORNER_TODAY_URL = "https://www.totalcorner.com/pt/match/today";
 
 function readerUrl(url) {
-  return `https://r.jina.ai/http://${url}`;
+  const separator = url.includes("?") ? "&" : "?";
+  return `https://r.jina.ai/http://${url}${separator}_=${Date.now()}`;
 }
 
 function asNumber(value, fallback = 0) {
