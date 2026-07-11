@@ -368,17 +368,23 @@ function formatHandicapLine(value) {
 
 function scanHandicap(game) {
   const hasLine = Number.isFinite(Number(game.handicapLine));
-  const signal = hasLine ? `Handicap mandante ${formatHandicapLine(game.handicapLine)}` : "";
+  const line = hasLine ? Number(game.handicapLine) : 0;
+  const hasUsefulLine = hasLine && Math.abs(line) >= 0.25;
+  const signal = hasUsefulLine ? `Handicap mandante ${formatHandicapLine(line)}` : "";
+  const confidence = hasUsefulLine ? Math.max(62, Math.min(82, Math.round(60 + Math.abs(line) * 12))) : 0;
   const checks = [
-    item("Linha handicap TotalCorner", hasLine, signal || "indisponivel", hasLine),
+    item("Linha handicap TotalCorner", hasUsefulLine, signal || (hasLine ? formatHandicapLine(line) : "indisponivel"), hasLine),
+    item("Linha minima >= 0.25", hasUsefulLine, hasLine ? formatHandicapLine(line) : "indisponivel", hasLine),
     item("Fonte TotalCorner", Boolean(game.totalCornerSource), game.totalCornerSource || "indisponivel", Boolean(game.totalCornerSource))
   ];
+  const passed = hasUsefulLine && Boolean(game.totalCornerSource);
 
   return result(game, {
-    confidence: hasLine ? 50 : 0,
+    confidence: passed ? confidence : 0,
     odd: game.odd || 0,
-    status: "Observar",
-    generatedSignals: signal ? [signal] : []
+    status: passed ? "Entrada" : "Observar",
+    statsPrefix: `IA Handicap ${passed ? "Aprovado" : "Descarta"}${signal ? ` - ${signal}` : ""}`,
+    generatedSignals: passed ? [signal] : []
   }, checks);
 }
 
