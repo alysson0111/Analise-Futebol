@@ -13,11 +13,20 @@ function isCornerSignal(signal) {
   return market.includes("corner") || market.includes("escanteio");
 }
 
+function getMlSignalText(signal) {
+  const label = String(signal.mlPickLabel || "").trim();
+  if (label) return `ML ${label}`;
+  if (signal.mlPick === "home") return `ML Casa (${signal.home || "mandante"})`;
+  if (signal.mlPick === "away") return `ML Fora (${signal.away || "visitante"})`;
+  if (signal.mlPick === "draw") return "ML Empate";
+  return "ML";
+}
+
 function getSignalText(signal) {
   const lines = Array.isArray(signal.signalLines) ? signal.signalLines.filter(Boolean) : [];
   if (isCornerSignal(signal)) return lines.find((line) => /9\.5/.test(String(line))) || lines[0] || DEFAULT_CORNER_LINE;
+  if (signal.market === "ml") return getMlSignalText(signal);
   if (lines.length) return lines.join(", ");
-  if (signal.market === "ml") return signal.mlPickLabel ? `ML ${signal.mlPickLabel}` : "ML";
   return signal.marketLabel || getMarketLabel(signal.market) || "-";
 }
 

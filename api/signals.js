@@ -32,6 +32,8 @@ function cleanSignal(input) {
     ...(Array.isArray(input.signalLines) ? input.signalLines : [])
   ].map(String).filter(Boolean);
   const market = String(analysis.mercado || input.market || "");
+  const mlPick = String(analysis.mlPick || input.mlPick || "");
+  const mlPickLabel = String(analysis.mlPickLabel || input.mlPickLabel || mlLabelFromPick(mlPick, input) || "");
   const normalizedSignalLines = market === "corners" && !signalLines.length
     ? ["Over 9.5 escanteios"]
     : [...new Set(signalLines)];
@@ -47,8 +49,8 @@ function cleanSignal(input) {
     league: String(input.league || ""),
     market,
     marketLabel: String(analysis.label || input.marketLabel || ""),
-    mlPick: String(analysis.mlPick || input.mlPick || ""),
-    mlPickLabel: String(analysis.mlPickLabel || input.mlPickLabel || ""),
+    mlPick,
+    mlPickLabel,
     odd: Number(analysis.odd || input.odd || 0),
     confidence: Number(analysis.confianca || input.confidence || 0),
     scoreText: String(input.scoreText || ""),
@@ -60,6 +62,13 @@ function cleanSignal(input) {
     result: input.result === "green" || input.result === "red" ? input.result : "pendente",
     createdAtText: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })
   };
+}
+
+function mlLabelFromPick(pick, game) {
+  if (pick === "home") return `Casa (${game.home || "mandante"})`;
+  if (pick === "away") return `Fora (${game.away || "visitante"})`;
+  if (pick === "draw") return "Empate";
+  return "";
 }
 
 function normalizeMarketName(value) {
@@ -336,13 +345,15 @@ function findCurrentGame(signal, games) {
 }
 
 function currentGameUpdate(signal, game, result) {
+  const mlPick = game.mlPick || signal.mlPick || "";
+  const mlPickLabel = game.mlPickLabel || signal.mlPickLabel || mlLabelFromPick(mlPick, signal) || mlLabelFromPick(mlPick, game) || "";
   return {
     result: result || signal.result || "pendente",
     scoreText: game.scoreText || signal.scoreText || "",
     liveStatus: game.liveStatus || signal.liveStatus || "",
     dateText: game.dateText || signal.dateText || "",
-    mlPick: game.mlPick || signal.mlPick || "",
-    mlPickLabel: game.mlPickLabel || signal.mlPickLabel || "",
+    mlPick,
+    mlPickLabel,
     liveCorners: Number.isFinite(Number(game.liveCorners)) ? Number(game.liveCorners) : signal.liveCorners,
     signalLines: Array.isArray(game.generatedSignals) && game.generatedSignals.length ? game.generatedSignals : signal.signalLines || []
   };
