@@ -12,6 +12,12 @@ function getStatClass(entry) {
   return "stat-line";
 }
 
+function getGameSignalLines(game) {
+  const generated = game.analise?.linhas || game.signals || [];
+  const mlLine = game.market === "ml" && game.mlPickLabel ? [`ML ${game.mlPickLabel}`] : [];
+  return [...new Set([...mlLine, ...generated].map(String).filter(Boolean))];
+}
+
 export default function GameCard({ games, updatedAt }) {
   if (!games.length) {
     return (
@@ -48,26 +54,32 @@ export default function GameCard({ games, updatedAt }) {
             </tr>
           </thead>
           <tbody>
-            {games.map((game) => (
-              <tr key={game.key}>
-                <td><strong>{game.home} x {game.away}</strong></td>
-                <td>{game.league}</td>
-                <td>{game.liveStatus || game.time || "-"}</td>
-                <td>{game.scoreText || "-"}</td>
-                <td>{game.analise?.label || game.marketLabel || getMarketLabel(game.market)}</td>
-                <td>{currencyOdd(game.analise?.odd ?? game.odd)}</td>
-                <td>{game.dateText || "-"}</td>
-                <td>{Math.round(Number(game.analise?.confianca ?? game.confidence ?? 0))}%</td>
-                <td>
-                  <div className="stats">
-                    {(game.analise?.dadosJogo || game.dadosJogo || []).map((entry) => <span className={getStatClass(entry)} key={entry}>{entry}</span>)}
-                    {(game.analise?.sinais || game.stats || []).slice(0, 6).map((entry) => <span className={getStatClass(entry)} key={entry}>{entry}</span>)}
-                    {!((game.analise?.dadosJogo || game.dadosJogo || []).length || (game.analise?.sinais || game.stats || []).length) && <span className="stat-line stat-missing">Sem dados da API</span>}
-                  </div>
-                </td>
-                <td><AnalysisBadge status={game.analise?.statusOriginal || game.status} /></td>
-              </tr>
-            ))}
+            {games.map((game) => {
+              const signalLines = getGameSignalLines(game);
+              const dataLines = game.analise?.dadosJogo || game.dadosJogo || [];
+              const scannerLines = game.analise?.sinais || game.stats || [];
+              return (
+                <tr key={game.key}>
+                  <td><strong>{game.home} x {game.away}</strong></td>
+                  <td>{game.league}</td>
+                  <td>{game.liveStatus || game.time || "-"}</td>
+                  <td>{game.scoreText || "-"}</td>
+                  <td>{game.analise?.label || game.marketLabel || getMarketLabel(game.market)}</td>
+                  <td>{currencyOdd(game.analise?.odd ?? game.odd)}</td>
+                  <td>{game.dateText || "-"}</td>
+                  <td>{Math.round(Number(game.analise?.confianca ?? game.confidence ?? 0))}%</td>
+                  <td>
+                    <div className="stats">
+                      {signalLines.map((entry) => <span className="stat-line stat-grade" key={`signal-${entry}`}>SINAL | {entry}</span>)}
+                      {dataLines.map((entry) => <span className={getStatClass(entry)} key={entry}>{entry}</span>)}
+                      {scannerLines.slice(0, 8).map((entry) => <span className={getStatClass(entry)} key={entry}>{entry}</span>)}
+                      {!(dataLines.length || scannerLines.length || signalLines.length) && <span className="stat-line stat-missing">Sem dados da API</span>}
+                    </div>
+                  </td>
+                  <td><AnalysisBadge status={game.analise?.statusOriginal || game.status} /></td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

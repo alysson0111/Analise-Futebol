@@ -110,7 +110,7 @@ function scanMl(game) {
     odd: game.mlOdd || game.odd || 0,
     status: passed ? "Entrada" : "Observar",
     grade: passed ? "IA ML" : "Descarta",
-    statsPrefix: `IA ML ${passed ? "Aprovado" : "Descarta"}`,
+    statsPrefix: `IA ML ${passed ? "Aprovado" : "Descarta"} - ${mlLabel(pick, game)}`,
     mlPick: pick,
     mlPickLabel: mlLabel(pick, game),
     generatedSignals: passed ? [`ML ${mlLabel(pick, game)}`] : []
