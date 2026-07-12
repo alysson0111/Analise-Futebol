@@ -3,6 +3,7 @@ import { analyzeFixtures } from "./_lib/scanner.js";
 import { fetchTotalCornerDate, fetchTotalCornerToday, totalCornerRowsToFixtures } from "./_lib/totalCorner.js";
 
 const FINISHED_STATUSES = new Set(["FT", "AET", "PEN"]);
+const SIGNALS_READ_LIMIT = 2000;
 
 function send(res, status, body) {
   res.statusCode = status;
@@ -442,11 +443,11 @@ async function settleSignalsFromTotalCorner(db, signals) {
 
 async function listSignals(res) {
   const db = getDb();
-  const snapshot = await db.collection("sinais").orderBy("createdAt", "desc").limit(300).get();
+  const snapshot = await db.collection("sinais").orderBy("createdAt", "desc").limit(SIGNALS_READ_LIMIT).get();
   const signals = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   const verifiedSignals = await resetUnverifiedSettlements(db, signals);
   const settledSignals = await settleSignalsFromTotalCorner(db, verifiedSignals);
-  send(res, 200, { signals: settledSignals });
+  send(res, 200, { signals: settledSignals, limit: SIGNALS_READ_LIMIT });
 }
 
 async function saveSignal(req, res) {
