@@ -51,6 +51,7 @@ function cleanSignal(input) {
     marketLabel: String(analysis.label || input.marketLabel || ""),
     mlPick,
     mlPickLabel,
+    handicapLine: Number.isFinite(Number(input.handicapLine)) ? Number(input.handicapLine) : extractHandicapLine(input),
     odd: Number(analysis.odd || input.odd || 0),
     confidence: Number(analysis.confianca || input.confidence || 0),
     scoreText: String(input.scoreText || ""),
@@ -73,6 +74,17 @@ function mlLabelFromPick(pick, game) {
 
 function normalizeMarketName(value) {
   return String(value || "").toLowerCase().replace(/\s+/g, "");
+}
+
+function extractHandicapLine(value) {
+  if (Number.isFinite(Number(value?.handicapLine))) return Number(value.handicapLine);
+  const text = [
+    ...(Array.isArray(value?.signalLines) ? value.signalLines : []),
+    ...(Array.isArray(value?.signals) ? value.signals : []),
+    ...(Array.isArray(value?.stats) ? value.stats : [])
+  ].join(" ");
+  const match = text.match(/Handicap[^+-]*([+-]\d+(?:\.\d+)?|0\.0)/i);
+  return match ? asNumber(match[1], NaN) : NaN;
 }
 
 function parseScoreTotal(scoreText) {
@@ -244,6 +256,15 @@ function getSignalSettlement(signal, game) {
     return signal.mlPick === mlResult ? "green" : "red";
   }
 
+  if (market.includes("handicap")) {
+    const line = Number.isFinite(Number(game.handicapLine)) ? Number(game.handicapLine) : extractHandicapLine(signal);
+    if (!finished || !Number.isFinite(homeGoals) || !Number.isFinite(awayGoals) || !Number.isFinite(line)) return "";
+    const adjustedHome = homeGoals + line;
+    if (adjustedHome > awayGoals) return "green";
+    if (adjustedHome < awayGoals) return "red";
+    return "";
+  }
+
   return "";
 }
 
@@ -280,6 +301,10 @@ function shouldResetUnverifiedSettlement(signal) {
   }
 
   if (market === "ml" || market.includes("moneyline")) {
+    return true;
+  }
+
+  if (market.includes("handicap")) {
     return true;
   }
 
@@ -354,6 +379,7 @@ function currentGameUpdate(signal, game, result) {
     dateText: game.dateText || signal.dateText || "",
     mlPick,
     mlPickLabel,
+    handicapLine: Number.isFinite(Number(game.handicapLine)) ? Number(game.handicapLine) : signal.handicapLine,
     liveCorners: Number.isFinite(Number(game.liveCorners)) ? Number(game.liveCorners) : signal.liveCorners,
     signalLines: Array.isArray(game.generatedSignals) && game.generatedSignals.length ? game.generatedSignals : signal.signalLines || []
   };
@@ -366,6 +392,8 @@ function shouldPersistCurrentUpdate(signal, update) {
     || String(update.dateText || "") !== String(signal.dateText || "")
     || String(update.mlPick || "") !== String(signal.mlPick || "")
     || String(update.mlPickLabel || "") !== String(signal.mlPickLabel || "")
+    || ((Number.isFinite(Number(update.handicapLine)) || Number.isFinite(Number(signal.handicapLine)))
+      && Number(update.handicapLine) !== Number(signal.handicapLine))
     || Number(update.liveCorners ?? -1) !== Number(signal.liveCorners ?? -1)
     || JSON.stringify(update.signalLines || []) !== JSON.stringify(signal.signalLines || []);
 }
@@ -455,7 +483,7 @@ async function saveSignal(req, res) {
 
 async function updateResult(req, res) {
   const db = getDb();
-  const { id, result, scoreText, liveStatus, dateText, mlPick, mlPickLabel, liveCorners, signalLines } = readBody(req);
+  const { id, result, scoreText, liveStatus, dateText, mlPick, mlPickLabel, handicapLine, liveCorners, signalLines } = readBody(req);
   if (!id || !["green", "red", "pendente"].includes(result)) {
     return send(res, 400, { error: "Resultado invalido." });
   }
@@ -471,6 +499,7 @@ async function updateResult(req, res) {
   if (dateText) update.dateText = String(dateText);
   if (mlPick) update.mlPick = String(mlPick);
   if (mlPickLabel) update.mlPickLabel = String(mlPickLabel);
+  if (Number.isFinite(Number(handicapLine))) update.handicapLine = Number(handicapLine);
   if (Number.isFinite(Number(liveCorners))) update.liveCorners = Number(liveCorners);
   if (Array.isArray(signalLines)) update.signalLines = signalLines.map(String).filter(Boolean).slice(0, 10);
 

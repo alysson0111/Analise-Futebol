@@ -172,6 +172,18 @@ function normalizeMarketName(value) {
   return String(value || "").toLowerCase().replace(/\s+/g, "");
 }
 
+function extractHandicapLine(value) {
+  if (Number.isFinite(Number(value?.handicapLine))) return Number(value.handicapLine);
+  const text = [
+    ...(Array.isArray(value?.signalLines) ? value.signalLines : []),
+    ...(Array.isArray(value?.signals) ? value.signals : []),
+    ...(Array.isArray(value?.stats) ? value.stats : [])
+  ].join(" ");
+  const match = text.match(/Handicap[^+-]*([+-]\d+(?:\.\d+)?|0\.0)/i);
+  const line = match ? Number(match[1]) : NaN;
+  return Number.isFinite(line) ? line : NaN;
+}
+
 function getSignalSettlement(signal, game) {
   if (!game) return "";
 
@@ -217,6 +229,15 @@ function getSignalSettlement(signal, game) {
   if (market === "ml" || market.includes("moneyline")) {
     if (!finished || !signal.mlPick || !mlResult) return "";
     return signal.mlPick === mlResult ? "green" : "red";
+  }
+
+  if (market.includes("handicap")) {
+    const line = Number.isFinite(Number(game.handicapLine)) ? Number(game.handicapLine) : extractHandicapLine(signal);
+    if (!finished || scoreParts.length !== 2 || !scoreParts.every(Number.isFinite) || !Number.isFinite(line)) return "";
+    const adjustedHome = scoreParts[0] + line;
+    if (adjustedHome > scoreParts[1]) return "green";
+    if (adjustedHome < scoreParts[1]) return "red";
+    return "";
   }
 
   return "";
@@ -321,6 +342,7 @@ export default function App() {
         dateText: game.dateText || signal.dateText || "",
         mlPick: game.mlPick || signal.mlPick || "",
         mlPickLabel: game.mlPickLabel || signal.mlPickLabel || "",
+        handicapLine: Number.isFinite(Number(game.handicapLine)) ? Number(game.handicapLine) : signal.handicapLine,
         liveCorners: Number.isFinite(Number(game.liveCorners)) ? Number(game.liveCorners) : signal.liveCorners,
         signalLines: Array.isArray(game.signals) && game.signals.length ? game.signals : signal.signalLines || []
       };
@@ -328,6 +350,8 @@ export default function App() {
         || String(settlement.scoreText || "") !== String(signal.scoreText || "")
         || String(settlement.liveStatus || "") !== String(signal.liveStatus || "")
         || String(settlement.dateText || "") !== String(signal.dateText || "")
+        || ((Number.isFinite(Number(settlement.handicapLine)) || Number.isFinite(Number(signal.handicapLine)))
+          && Number(settlement.handicapLine) !== Number(signal.handicapLine))
         || Number(settlement.liveCorners ?? -1) !== Number(signal.liveCorners ?? -1);
       if (!changed) return;
 
