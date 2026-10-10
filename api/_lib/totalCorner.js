@@ -105,7 +105,7 @@ function parseBlock(block) {
   const afterScoreRaw = scoreMatch[4];
   const handicapLine = parseHandicapLine(afterScoreRaw);
   const afterScore = afterScoreRaw.replace(/\s+[+-]?\d+(?:\.\d+)?(?:\s*\([^)]+\))?\s*$/, "");
-  const timeMatch = beforeScore.match(/^(\d{2}:\d{2})(?:\s+(\d{1,3}|Intervalo|Integral|Full(?:-time)?|HT|FT))?\s+(.+)$/i);
+  const timeMatch = beforeScore.match(/^(\d{2}:\d{2})(?:\s+(\d{1,3}|Intervalo|Integral|Fim|Full(?:-time)?|HT|FT))?\s+(.+)$/i);
   if (!timeMatch) return null;
 
   const cornerIndex = lines.findIndex((line, index) => index > headerIndex && isScoreLine(line));
@@ -149,7 +149,7 @@ function parseCompactRecord(record) {
     .replace(/\s+/g, " ")
     .trim();
 
-  const timeMatch = beforeHome.match(/(\d{2}:\d{2})(?:\s+(\d{1,3}|Intervalo|Integral|Full(?:-time)?|HT|FT))?/i);
+  const timeMatch = beforeHome.match(/(\d{2}:\d{2})(?:\s+(\d{1,3}|Intervalo|Integral|Fim|Full(?:-time)?|HT|FT))?/i);
   const goalsMatch = betweenTeams.match(/(\d+)\s*-\s*(\d+)/);
   if (!timeMatch || !goalsMatch) return null;
 
@@ -206,7 +206,7 @@ function parseMarkdownTableRows(markdown) {
     const away = cleanTeam(linkedTeam(scoreIndex + 1) || cells[scoreIndex + 1]);
     if (!home || !away) return null;
     const statusCell = cells.slice(timeIndex + 1, scoreIndex - 1).join(" ").trim();
-    const status = statusCell.match(/^(Integral|Full(?:-time)?|FT|HT|Intervalo|\d{1,3})\b/i)?.[1] || "";
+    const status = statusCell.match(/^(Integral|Fim|Full(?:-time)?|FT|HT|Intervalo|\d{1,3})\b/i)?.[1] || "";
     const cornersMatch = String(cells[scoreIndex + 3] || "").match(/^(\d+)\s*-\s*(\d+)/);
     return {
       league: cells.slice(0, timeIndex).filter(Boolean).at(-1) || "TotalCorner",
@@ -242,7 +242,7 @@ function statusInfo(status) {
   const value = cleanLine(status);
   if (/^\d{1,3}$/.test(value)) return { elapsed: asNumber(value), short: "LIVE", liveStatus: `${value}'` };
   if (/^Intervalo|HT$/i.test(value)) return { elapsed: 45, short: "HT", liveStatus: "HT" };
-  if (/^(Integral|Full(?:-time)?|FT)$/i.test(value)) return { elapsed: 90, short: "FT", liveStatus: "FT" };
+  if (/^(Integral|Fim|Full(?:-time)?|FT)$/i.test(value)) return { elapsed: 90, short: "FT", liveStatus: "FT" };
   return { elapsed: 0, short: value ? "LIVE" : "NS", liveStatus: value || "Pre-jogo" };
 }
 
@@ -293,12 +293,22 @@ function parseTotalCornerMarkdownLegacy(markdown) {
     .filter((row) => row && row.home && row.away);
 }
 
+function parseTabSeparatedRows(markdown) {
+  const lines = String(markdown || "").split("\n");
+  const headers = lines.flatMap((line, index) => /^\s*\d{2}:\d{2}\t/.test(line) ? [index] : []);
+  return headers.map((index, position) => {
+    const league = lines.slice(0, index).map(cleanLine).filter(Boolean).at(-1) || "TotalCorner";
+    const end = headers[position + 1] ?? lines.length;
+    return parseBlock([league, ...lines.slice(index, end)].join("\n"));
+  }).filter(Boolean);
+}
+
 export function parseTotalCornerMarkdown(markdown) {
   const text = String(markdown || "");
   const footerIndex = text.indexOf("Para usar nossos dados");
   const section = footerIndex > 0 ? text.slice(0, footerIndex) : text;
   const tableRows = parseTotalCornerMarkdownLegacy(section);
-  const combined = [...parseMarkdownTableRows(section), ...tableRows, ...parseCompactRows(section)];
+  const combined = [...parseMarkdownTableRows(section), ...parseTabSeparatedRows(section), ...tableRows, ...parseCompactRows(section)];
   const seen = new Set();
   return combined.filter((row) => {
     const key = `${row.home}|${row.away}|${row.time}|${row.status}|${row.homeGoals}|${row.awayGoals}`;

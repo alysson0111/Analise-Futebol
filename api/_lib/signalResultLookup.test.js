@@ -90,6 +90,22 @@ test("schedule Full labels are final and card counts cannot corrupt team names",
   assert.equal(buildFinalSignalUpdate({ market: "over25", scoreText: "0x0" }, game).result, "green");
 });
 
+test("Portuguese schedule Fim in tab-separated records confirms the final score", () => {
+  const rows = parseTotalCornerMarkdown("Liga A\n\t00:30\tFim\t[5] Fluminense\t4 - 0\tCoritiba [9] 1\t-1.25\t\n6 - 2\n9.5\nEstatisticas");
+  const game = analyzeFixtures({ response: totalCornerRowsToFixtures(rows) })[0];
+  assert.equal(game.home, "Fluminense");
+  assert.equal(game.away, "Coritiba");
+  assert.equal(game.apiStatus, "FT");
+  assert.equal(buildFinalSignalUpdate({ market: "over25", scoreText: "0x0" }, game).result, "green");
+});
+
+test("tab-separated schedules read every match without depending on analysis link labels", () => {
+  const markdown = "Liga A\n\t00:30\tFim\tCasa\t4 - 0\tFora\t-1.25\t\n6 - 2\n9.5\nDetalhes Cotas Ao vivo\nLiga B\n\t01:00\tFim\tOutro\t0 - 0\tVisitante\t0.0\t\n3 - 1\n8.5\nDetalhes Cotas Ao vivo";
+  const rows = parseTotalCornerMarkdown(markdown);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map((row) => [row.home, row.status, row.liveCorners]), [["Casa", "Fim", 8], ["Outro", "Fim", 4]]);
+});
+
 test("current pipe-separated tables preserve the final status and score", () => {
   const markdown = `| Liga | Hora | Tempo | Mandante | Placar | Visitante | Handicap | Escanteios | Linha | Gols |
 | ![Image 1](https://static.totalcorner.com/img/countries/jp.png) | [Japao - J2](https://www.totalcorner.com/pt/league/1) | 09:00 | Integral | [3] [Jubilo Iwata](https://www.totalcorner.com/pt/team/view/1) | 1 - 0 | [Hokkaido Consadole Sapporo](https://www.totalcorner.com/pt/team/view/2) [18] | -0.75 (-0.25) | 5 - 3 (2-1) | 10.5 (8.5) | 2.5 (1.5) | Detalhes |`;
