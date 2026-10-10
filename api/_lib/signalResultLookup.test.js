@@ -1,0 +1,64 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { selectResultDates, findResultGame } from "./signalResultLookup.js";
+import { mergeReportSignals } from "../../src/analysis/reportSignals.js";
+import { parseTotalCornerMarkdown, totalCornerRowsToFixtures, fetchTotalCornerDate } from "./totalCorner.js";
+import { analyzeFixtures } from "./scanner.js";
+import { buildFinalSignalUpdate } from "../../src/analysis/signalSettlement.js";
+
+test("all historical pending dates are revisited, including signals saved before kickoff", () => {
+  const signals = ["10/10/2026", "09/10/2026", "08/10/2026", "07/10/2026", "06/10/2026", "05/10/2026", "04/10/2026"].map((dateText) => ({ dateText, liveStatus: "NS" }));
+  let cursor = 0;
+  const visited = new Set();
+  for (let i = 0; i < 5; i++) {
+    const plan = selectResultDates(signals, cursor, "2026-10-10");
+    assert.ok(plan.dates.includes("2026-10-10"));
+    assert.ok(plan.dates.includes("2026-10-09"));
+    plan.dates.forEach((date) => visited.add(date));
+    cursor = plan.nextCursor;
+  }
+  assert.equal(visited.size, 7);
+});
+
+test("a final result wins over a stale live row and never uses another date", () => {
+  const signal = { sourceId: "same", dateText: "09/10/2026", market: "over05", home: "Casa", away: "Fora" };
+  const live = { ...signal, apiStatus: "LIVE", scoreText: "0x0" };
+  const final = { ...signal, apiStatus: "FT", scoreText: "1x0" };
+  assert.equal(findResultGame(signal, [live, final]), final);
+  assert.equal(findResultGame(signal, [{ ...final, dateText: "10/10/2026" }]), null);
+  assert.equal(findResultGame(signal, [{ ...final, sourceId: "different", away: "Fora B" }]), null);
+});
+
+test("poll responses preserve new local signals, final results and deleted rows", () => {
+  const current = [{ id: "new", scoreText: "0x0" }, { id: "final", result: "green", finalConfirmed: true, scoreText: "1x0" }];
+  const incoming = [{ id: "final", result: "pendente", scoreText: "0x0" }, { id: "deleted" }];
+  const merged = mergeReportSignals(current, incoming, new Set(["deleted"]));
+  assert.equal(merged.length, 2);
+  assert.equal(merged.find((signal) => signal.id === "final").result, "green");
+});
+
+test("both TotalCorner formats are parsed together; missing corners do not hide final scores", () => {
+  const markdown = `Liga A
+08:00 Integral Casa 2 - 1 Fora
+Estatísticas Cotas Ao vivo
+![Image 1](https://static.totalcorner.com/img/countries/br.png) 09:00 FT [Outro](https://www.totalcorner.com/pt/team/view/1) 1 - 0 [Visitante](https://www.totalcorner.com/pt/team/view/2) +0.5 4 - 3 9.5 2.5`;
+  const rows = parseTotalCornerMarkdown(markdown);
+  assert.equal(rows.length, 2);
+  const games = analyzeFixtures({ response: totalCornerRowsToFixtures(rows) });
+  const game = games.find((item) => item.home === "Casa" && item.market === "over05");
+  assert.equal(buildFinalSignalUpdate({ market: "over05", scoreText: "0x0" }, game).result, "green");
+  assert.equal(buildFinalSignalUpdate({ market: "corners", signalLines: ["Over 9.5 escanteios"] }, game), null);
+});
+
+test("reader errors propagate instead of silently reporting no results", async () => {
+  const original = globalThis.fetch;
+  try {
+    globalThis.fetch = async (url) => {
+      assert.ok(String(url).startsWith("https://r.jina.ai/https://www.totalcorner.com/"));
+      return { ok: false, status: 401 };
+    };
+    await assert.rejects(fetchTotalCornerDate("2026-10-09"), /401/);
+  } finally {
+    globalThis.fetch = original;
+  }
+});

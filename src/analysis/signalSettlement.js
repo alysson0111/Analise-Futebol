@@ -31,6 +31,7 @@ export function getSettlementOutcome(signal, game) {
   const totals = { over05: 0.5, "+0.5gols": 0.5, over15: 1.5, "+1.5gols": 1.5, over25: 2.5, "+2.5gols": 2.5, under25: 2.5, "under2.5": 2.5, under35: 3.5, "under3.5ia": 3.5 };
   if (market in totals) return outcome(market.startsWith("under") ? totals[market] - total : total - totals[market]);
   if (market.includes("corner") || market.includes("escanteio")) {
+    if (game.cornersAvailable === false) return null;
     const corners = numberOrNaN(game.liveCorners);
     const signals = signal.signalLines?.length ? signal.signalLines : signal.signals || [];
     const match = signals.length === 1 ? String(signals[0]).match(/^(Over|Under)\s+(\d+(?:\.\d+)?)/i) : null;

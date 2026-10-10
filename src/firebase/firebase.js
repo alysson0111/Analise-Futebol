@@ -1,7 +1,7 @@
 import { apiJson } from "../api/serverApi.js";
 
-export function listSignals() {
-  return apiJson("/api/signals");
+export function listSignals(cursor = 0) {
+  return apiJson(`/api/signals?cursor=${encodeURIComponent(cursor)}`);
 }
 
 export function saveSignal(signal) {

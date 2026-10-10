@@ -2,6 +2,7 @@ import { getDb, now } from "./_lib/firebase.js";
 import { analyzeFixtures } from "./_lib/scanner.js";
 import { fetchTotalCornerDate, fetchTotalCornerToday, totalCornerRowsToFixtures } from "./_lib/totalCorner.js";
 import { isFinishedGame, buildFinalSignalUpdate } from "../src/analysis/signalSettlement.js";
+import { selectResultDates, findResultGame } from "./_lib/signalResultLookup.js";
 
 const FINISHED_STATUSES = new Set(["FT", "AET", "PEN"]);
 const SIGNALS_READ_LIMIT = 2000;
@@ -214,73 +215,33 @@ function parseForebetMatchScore(markdown) {
 }
 
 
-function normalizeTeam(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
-function teamMatchScore(a, b) {
-  const left = normalizeTeam(a);
-  const right = normalizeTeam(b);
-  if (!left || !right) return 0;
-  if (left === right) return 1;
-  if (left.includes(right) || right.includes(left)) return 0.9;
-  const leftTokens = new Set(left.split(" ").filter((token) => token.length > 2));
-  const rightTokens = new Set(right.split(" ").filter((token) => token.length > 2));
-  if (!leftTokens.size || !rightTokens.size) return 0;
-  const hits = [...leftTokens].filter((token) => rightTokens.has(token)).length;
-  return hits / Math.max(leftTokens.size, rightTokens.size);
-}
-
-function findCurrentGame(signal, games) {
-  games = games.filter((game) => game.dateText === signal.dateText);
-  const sameSource = games.filter((game) => game.sourceId === signal.sourceId);
-  const sourceMatch = sameSource.find((game) => game.market === signal.market) || sameSource[0];
-  if (sourceMatch) return sourceMatch;
-
-  let best = null;
-  let bestScore = 0;
-  for (const game of games) {
-    if (game.market !== signal.market) continue;
-    const score = (teamMatchScore(signal.home, game.home) + teamMatchScore(signal.away, game.away)) / 2;
-    if (score > bestScore) {
-      best = game;
-      bestScore = score;
-    }
-  }
-  return bestScore >= 0.65 ? best : null;
-}
-
-async function settleSignalsFromTotalCorner(db, signals) {
+async function settleSignalsFromTotalCorner(db, signals, cursor = 0) {
   const pending = signals.filter((signal) => signal.id && !signal.finalConfirmed && (signal.result === "pendente" || !isFinishedGame(signal)));
-  if (!pending.length) return signals;
+  if (!pending.length) return { signals, settlement: { updated: 0, errors: [], nextCursor: 0 } };
 
   const updates = new Map();
   let games = [];
+  const plan = selectResultDates(pending, cursor);
+  const settlementStatus = { updated: 0, errors: [], checkedDates: plan.dates, nextCursor: plan.nextCursor };
   try {
-    const dateIsos = [...new Set(
-      pending
-        .filter(shouldFetchDatedResult)
-        .map((signal) => ptDateToIso(signal.dateText))
-        .filter(Boolean)
-    )].slice(0, 2);
     const rowResults = await Promise.allSettled([
       fetchTotalCornerToday(),
-      ...dateIsos.map((dateIso) => fetchTotalCornerDate(dateIso))
+      ...plan.dates.map((dateIso) => fetchTotalCornerDate(dateIso))
     ]);
+    rowResults.forEach((result, index) => {
+      if (result.status === "rejected") settlementStatus.errors.push(`${index === 0 ? "Hoje" : plan.dates[index - 1]}: ${result.reason?.message || "Falha ao buscar resultado"}`);
+      else if (!result.value.length) settlementStatus.errors.push(`${index === 0 ? "Hoje" : plan.dates[index - 1]}: fonte sem jogos legiveis`);
+    });
     const totalCornerRows = rowResults.flatMap((result) => result.status === "fulfilled" ? result.value : []);
     games = analyzeFixtures({ response: totalCornerRowsToFixtures(uniqueRows(totalCornerRows)) });
-  } catch {
-    return signals;
+  } catch (error) {
+    settlementStatus.errors.push(error.message || "Falha na consulta de resultados");
+    return { signals, settlement: settlementStatus };
   }
 
   for (const signal of pending) {
-    const game = findCurrentGame(signal, games);
+    const game = findResultGame(signal, games);
     if (!game) continue;
     const currentUpdate = buildFinalSignalUpdate(signal, game);
     if (!currentUpdate) continue;
@@ -291,18 +252,24 @@ async function settleSignalsFromTotalCorner(db, signals) {
       updatedAt: now()
     };
     updates.set(signal.id, settlement);
-    await db.collection("sinais").doc(signal.id).update(settlement);
   }
-
-  return signals.map((signal) => updates.has(signal.id) ? { ...signal, ...updates.get(signal.id) } : signal);
+  const entries = [...updates.entries()];
+  for (let index = 0; index < entries.length; index += 450) {
+    const batch = db.batch();
+    for (const [id, update] of entries.slice(index, index + 450)) batch.update(db.collection("sinais").doc(id), update);
+    await batch.commit();
+  }
+  settlementStatus.updated = updates.size;
+  return { signals: signals.map((signal) => updates.has(signal.id) ? { ...signal, ...updates.get(signal.id) } : signal), settlement: settlementStatus };
 }
 
-async function listSignals(res) {
+async function listSignals(req, res) {
   const db = getDb();
   const snapshot = await db.collection("sinais").orderBy("createdAt", "desc").limit(SIGNALS_READ_LIMIT).get();
   const signals = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  const settledSignals = await settleSignalsFromTotalCorner(db, signals);
-  send(res, 200, { signals: settledSignals, limit: SIGNALS_READ_LIMIT });
+  const cursor = new URL(req.url || "/api/signals", "http://localhost").searchParams.get("cursor");
+  const payload = await settleSignalsFromTotalCorner(db, signals, cursor);
+  send(res, 200, { ...payload, limit: SIGNALS_READ_LIMIT });
 }
 
 async function saveSignal(req, res) {
@@ -367,7 +334,7 @@ async function deleteSignal(req, res) {
 
 export default async function handler(req, res) {
   try {
-    if (req.method === "GET") return await listSignals(res);
+    if (req.method === "GET") return await listSignals(req, res);
     if (req.method === "POST") return await saveSignal(req, res);
     if (req.method === "PATCH") return await updateResult(req, res);
     if (req.method === "DELETE") return await deleteSignal(req, res);

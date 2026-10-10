@@ -6,7 +6,7 @@ function totalCornerDateUrl(dateIso) {
 
 function readerUrl(url) {
   const separator = url.includes("?") ? "&" : "?";
-  return `https://r.jina.ai/http://${url}${separator}_=${Date.now()}`;
+  return `https://r.jina.ai/${url}${separator}_=${Date.now()}`;
 }
 
 function asNumber(value, fallback = 0) {
@@ -108,12 +108,9 @@ function parseBlock(block) {
   if (!timeMatch) return null;
 
   const cornerIndex = lines.findIndex((line, index) => index > headerIndex && isScoreLine(line));
-  if (cornerIndex < 0) return null;
+  const corners = cornerIndex >= 0 ? parseScorePair(lines[cornerIndex]) : null;
 
-  const corners = parseScorePair(lines[cornerIndex]);
-  if (!corners) return null;
-
-  const cornerLine = parseCornerLine(lines.slice(cornerIndex + 1).find((line) => !/^\(/.test(line) && /^\d/.test(line)));
+  const cornerLine = corners ? parseCornerLine(lines.slice(cornerIndex + 1).find((line) => !/^\(/.test(line) && /^\d/.test(line))) : 0;
 
   return {
     league: lines[headerIndex - 1],
@@ -123,9 +120,9 @@ function parseBlock(block) {
     away: cleanTeam(afterScore),
     homeGoals: asNumber(scoreMatch[2]),
     awayGoals: asNumber(scoreMatch[3]),
-    homeCorners: corners.home,
-    awayCorners: corners.away,
-    liveCorners: corners.home + corners.away,
+    homeCorners: corners?.home ?? null,
+    awayCorners: corners?.away ?? null,
+    liveCorners: corners ? corners.home + corners.away : null,
     handicapLine,
     cornerLine,
     source: "TotalCorner"
@@ -161,11 +158,9 @@ function parseCompactRecord(record) {
     ? afterAway.slice(handicapMatch.index + handicapMatch[0].length)
     : afterAway;
   const cornersMatch = afterHandicap.match(/(\d+)\s*-\s*(\d+)/);
-  if (!cornersMatch) return null;
-
-  const afterCorners = afterHandicap
+  const afterCorners = cornersMatch ? afterHandicap
     .slice(cornersMatch.index + cornersMatch[0].length)
-    .replace(/^\s*\([^)]*\)\s*/, "");
+    .replace(/^\s*\([^)]*\)\s*/, "") : "";
   const cornerLineMatch = cleanLine(afterCorners).match(/^(\d+(?:\.\d+)?)(?:\s*\([^)]+\))?/);
   const afterCornerLine = cornerLineMatch ? cleanLine(afterCorners).slice(cornerLineMatch[0].length) : "";
 
@@ -177,9 +172,9 @@ function parseCompactRecord(record) {
     away: cleanTeam(awayMatch[1]),
     homeGoals: asNumber(goalsMatch[1]),
     awayGoals: asNumber(goalsMatch[2]),
-    homeCorners: asNumber(cornersMatch[1]),
-    awayCorners: asNumber(cornersMatch[2]),
-    liveCorners: asNumber(cornersMatch[1]) + asNumber(cornersMatch[2]),
+    homeCorners: cornersMatch ? asNumber(cornersMatch[1]) : null,
+    awayCorners: cornersMatch ? asNumber(cornersMatch[2]) : null,
+    liveCorners: cornersMatch ? asNumber(cornersMatch[1]) + asNumber(cornersMatch[2]) : null,
     handicapLine,
     cornerLine: parseCornerLine(afterCorners),
     goalLine: parseGoalLine(afterCornerLine),
@@ -223,6 +218,7 @@ export function totalCornerRowsToFixtures(rows) {
   const today = getSaoPauloDateIso();
   return (rows || []).map((row) => {
     const status = statusInfo(row.status);
+    const cornersAvailable = row.homeCorners != null && row.awayCorners != null;
     return {
       fixture: {
         id: `totalcorner-${row.league}-${row.home}-${row.away}-${row.time}`,
@@ -238,6 +234,7 @@ export function totalCornerRowsToFixtures(rows) {
       displayTime: row.time || "--:--",
       liveStatus: status.liveStatus,
       source: "TotalCorner",
+      cornersAvailable,
       totalCorner: row,
       handicapLine: row.handicapLine,
       handicapSignal: row.handicapLine === null ? "" : `Handicap mandante ${row.handicapLine > 0 ? "+" : ""}${row.handicapLine}`,
@@ -245,10 +242,10 @@ export function totalCornerRowsToFixtures(rows) {
       totalCornerGoalLine: row.goalLine || 0,
       avgCornersTotal: row.cornerLine || row.liveCorners,
       mediaEscanteiosConjunta: row.cornerLine || row.liveCorners,
-      liveStats: [
+      liveStats: cornersAvailable ? [
         { team: { name: row.home }, statistics: [{ type: "Corner Kicks", value: row.homeCorners }] },
         { team: { name: row.away }, statistics: [{ type: "Corner Kicks", value: row.awayCorners }] }
-      ],
+      ] : [],
       totalCornerDateText: getSaoPauloDateText()
     };
   });
@@ -269,7 +266,14 @@ export function parseTotalCornerMarkdown(markdown) {
   const footerIndex = text.indexOf("Para usar nossos dados");
   const section = footerIndex > 0 ? text.slice(0, footerIndex) : text;
   const tableRows = parseTotalCornerMarkdownLegacy(section);
-  return tableRows.length ? tableRows : parseCompactRows(section);
+  const combined = [...tableRows, ...parseCompactRows(section)];
+  const seen = new Set();
+  return combined.filter((row) => {
+    const key = `${row.home}|${row.away}|${row.time}|${row.status}|${row.homeGoals}|${row.awayGoals}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function findTotalCornerMatch(row, totalCornerRows) {
@@ -311,12 +315,15 @@ export function mergeTotalCornerRows(rows, totalCornerRows) {
   });
 }
 
-export async function fetchTotalCornerToday() {
-  const response = await fetch(readerUrl(TOTALCORNER_TODAY_URL), {
+async function fetchTotalCornerPage(url) {
+  const response = await fetch(readerUrl(url), {
+    signal: AbortSignal.timeout(20000),
     headers: {
       "User-Agent": "Mozilla/5.0 Analise-Futebol/1.0",
       "Cache-Control": "no-cache",
-      Pragma: "no-cache"
+      Pragma: "no-cache",
+      "X-No-Cache": "true",
+      ...(process.env.JINA_API_KEY ? { Authorization: `Bearer ${process.env.JINA_API_KEY}` } : {})
     }
   });
 
@@ -324,15 +331,10 @@ export async function fetchTotalCornerToday() {
   return parseTotalCornerMarkdown(await response.text());
 }
 
-export async function fetchTotalCornerDate(dateIso) {
-  const response = await fetch(readerUrl(totalCornerDateUrl(dateIso)), {
-    headers: {
-      "User-Agent": "Mozilla/5.0 Analise-Futebol/1.0",
-      "Cache-Control": "no-cache",
-      Pragma: "no-cache"
-    }
-  });
+export async function fetchTotalCornerToday() {
+  return fetchTotalCornerPage(TOTALCORNER_TODAY_URL);
+}
 
-  if (!response.ok) throw new Error(`TotalCorner retornou ${response.status}.`);
-  return parseTotalCornerMarkdown(await response.text()).map((row) => ({ ...row, dateIso }));
+export async function fetchTotalCornerDate(dateIso) {
+  return (await fetchTotalCornerPage(totalCornerDateUrl(dateIso))).map((row) => ({ ...row, dateIso }));
 }

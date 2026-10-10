@@ -5,6 +5,7 @@ import Prematch from "./pages/Prematch.jsx";
 import GameDetails from "./pages/GameDetails.jsx";
 import { getTodayInput } from "./analysis/scoreUtils.js";
 import { buildFinalSignalUpdate } from "./analysis/signalSettlement.js";
+import { mergeReportSignals } from "./analysis/reportSignals.js";
 import { useLiveGames } from "./hooks/useLiveGames.js";
 import { usePrematchGames } from "./hooks/usePrematchGames.js";
 import { useGameAnalysis } from "./hooks/useGameAnalysis.js";
@@ -165,6 +166,7 @@ export default function App() {
   const [bankStatus, setBankStatus] = useState("Servidor conectado ao Firestore pela API.");
   const savedSignalKeysRef = useRef(new Set());
   const settlingSignalIdsRef = useRef(new Set());
+  const deletedSignalIdsRef = useRef(new Set());
 
   const live = useLiveGames(liveInterval);
   const prematch = usePrematchGames();
@@ -174,18 +176,38 @@ export default function App() {
   const analysis = useGameAnalysis(sourceGames, { ...filters, market: selectedMarket !== "all" ? selectedMarket : filters.market });
 
   useEffect(() => {
-    listSignals()
-      .then((payload) => {
-        const saved = payload.signals || [];
-        savedSignalKeysRef.current = new Set(saved.map((signal) => signal.key).filter(Boolean));
-        setSignals(saved);
-      })
-      .catch((error) => setBankStatus(`Configure Firebase no servidor: ${error.message}`));
     live.start().catch((error) => {
       live.stop();
       setBankStatus(`Erro ao iniciar ao vivo: ${error.message}`);
       console.error(error);
     });
+  }, []);
+
+  useEffect(() => {
+    let stopped = false;
+    let timer;
+    let cursor = 0;
+    async function refreshReport() {
+      try {
+        const payload = await listSignals(cursor);
+        if (stopped) return;
+        cursor = payload.settlement?.nextCursor || 0;
+        const saved = payload.signals || [];
+        saved.forEach((signal) => { if (signal.key) savedSignalKeysRef.current.add(signal.key); });
+        setSignals((current) => mergeReportSignals(current, saved, deletedSignalIdsRef.current));
+        if (payload.settlement?.errors?.length) {
+          setBankStatus(`Resultados: falha na fonte. ${payload.settlement.errors[0]}`);
+        } else if (payload.settlement?.updated) {
+          setBankStatus(`${payload.settlement.updated} resultado(s) final(is) atualizado(s).`);
+        }
+      } catch (error) {
+        if (!stopped) setBankStatus(`Erro ao consultar resultados: ${error.message}`);
+      } finally {
+        if (!stopped) timer = window.setTimeout(refreshReport, 60000);
+      }
+    }
+    refreshReport();
+    return () => { stopped = true; window.clearTimeout(timer); };
   }, []);
 
   useEffect(() => {
@@ -290,6 +312,7 @@ export default function App() {
 
   async function removeSignal(id) {
     await deleteSignal(id);
+    deletedSignalIdsRef.current.add(id);
     settlingSignalIdsRef.current.delete(id);
     setSignals((current) => current.filter((signal) => signal.id !== id));
     setBankStatus("Sinal excluido do Firestore.");
