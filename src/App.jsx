@@ -5,7 +5,7 @@ import Prematch from "./pages/Prematch.jsx";
 import GameDetails from "./pages/GameDetails.jsx";
 import { getTodayInput } from "./analysis/scoreUtils.js";
 import { buildFinalSignalUpdate } from "./analysis/signalSettlement.js";
-import { mergeReportSignals } from "./analysis/reportSignals.js";
+import { mergeReportSignals, selectPendingSignalIds } from "./analysis/reportSignals.js";
 import { useLiveGames } from "./hooks/useLiveGames.js";
 import { usePrematchGames } from "./hooks/usePrematchGames.js";
 import { useGameAnalysis } from "./hooks/useGameAnalysis.js";
@@ -163,6 +163,8 @@ export default function App() {
   const [liveInterval, setLiveInterval] = useState(15000);
   const [filters, setFilters] = useState({ league: "all", market: "all", minConfidence: 0, minOdd: 0, search: "", mostrarApenasAprovados: false });
   const [signals, setSignals] = useState([]);
+  const signalsRef = useRef(signals);
+  signalsRef.current = signals;
   const [bankStatus, setBankStatus] = useState("Servidor conectado ao Firestore pela API.");
   const savedSignalKeysRef = useRef(new Set());
   const settlingSignalIdsRef = useRef(new Set());
@@ -187,10 +189,16 @@ export default function App() {
     let stopped = false;
     let timer;
     let cursor = 0;
+    let since = "";
+    let pendingOffset = 0;
     async function refreshReport() {
+      let retryDelay = 60000;
       try {
-        const payload = await listSignals(cursor);
+        const pending = selectPendingSignalIds(signalsRef.current, pendingOffset);
+        const payload = await listSignals(cursor, since, pending.ids);
         if (stopped) return;
+        since = payload.syncToken || since;
+        pendingOffset = pending.nextOffset;
         cursor = payload.settlement?.nextCursor || 0;
         const saved = payload.signals || [];
         saved.forEach((signal) => { if (signal.key) savedSignalKeysRef.current.add(signal.key); });
@@ -201,9 +209,10 @@ export default function App() {
           setBankStatus(`${payload.settlement.updated} resultado(s) final(is) atualizado(s).`);
         }
       } catch (error) {
+        if (/quota|RESOURCE_EXHAUSTED/i.test(error.message)) retryDelay = 300000;
         if (!stopped) setBankStatus(`Erro ao consultar resultados: ${error.message}`);
       } finally {
-        if (!stopped) timer = window.setTimeout(refreshReport, 60000);
+        if (!stopped) timer = window.setTimeout(refreshReport, retryDelay);
       }
     }
     refreshReport();

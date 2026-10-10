@@ -261,13 +261,39 @@ async function settleSignalsFromTotalCorner(db, signals, cursor = 0) {
   return { signals: signals.map((signal) => updates.has(signal.id) ? { ...signal, ...updates.get(signal.id) } : signal), settlement: settlementStatus };
 }
 
+export async function readSignalSync(db, params) {
+  const sinceDate = params.get("since") ? new Date(params.get("since")) : null;
+  const collection = db.collection("sinais");
+  const query = sinceDate
+    ? collection.where("updatedAt", ">=", sinceDate).orderBy("updatedAt", "asc")
+    : collection.orderBy("createdAt", "desc");
+  const snapshot = await query.limit(SIGNALS_READ_LIMIT).get();
+  const records = new Map(snapshot.docs.map((doc) => [doc.id, { id: doc.id, ...doc.data() }]));
+  const pendingIds = sinceDate ? [...new Set((params.get("pendingIds") || "").split(",").filter((id) => /^[a-zA-Z0-9_-]{1,128}$/.test(id)))].slice(0, 20) : [];
+  if (pendingIds.length) {
+    const pendingDocs = await db.getAll(...pendingIds.map((id) => collection.doc(id)));
+    pendingDocs.filter((doc) => doc.exists).forEach((doc) => records.set(doc.id, { id: doc.id, ...doc.data() }));
+  }
+  // Advance only to the last returned update when a delta page is full.
+  const syncTime = sinceDate && snapshot.size === SIGNALS_READ_LIMIT
+    ? snapshot.docs.at(-1).data().updatedAt
+    : snapshot.readTime;
+  const syncToken = syncTime.toDate().toISOString();
+  return { signals: [...records.values()], syncToken };
+}
+
 async function listSignals(req, res) {
   const db = getDb();
-  const snapshot = await db.collection("sinais").orderBy("createdAt", "desc").limit(SIGNALS_READ_LIMIT).get();
-  const signals = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  const cursor = new URL(req.url || "/api/signals", "http://localhost").searchParams.get("cursor");
+  const params = new URL(req.url || "/api/signals", "http://localhost").searchParams;
+  const since = params.get("since");
+  const sinceDate = since ? new Date(since) : null;
+  if (sinceDate && (!Number.isFinite(sinceDate.getTime()) || sinceDate.getTime() > Date.now())) {
+    return send(res, 400, { error: "Data de sincronizacao invalida." });
+  }
+  const { signals, syncToken } = await readSignalSync(db, params);
+  const cursor = params.get("cursor");
   const payload = await settleSignalsFromTotalCorner(db, signals, cursor);
-  send(res, 200, { ...payload, limit: SIGNALS_READ_LIMIT });
+  send(res, 200, { ...payload, syncToken, limit: SIGNALS_READ_LIMIT });
 }
 
 async function saveSignal(req, res) {

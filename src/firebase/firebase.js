@@ -1,7 +1,12 @@
 import { apiJson } from "../api/serverApi.js";
 
-export function listSignals(cursor = 0) {
-  return apiJson(`/api/signals?cursor=${encodeURIComponent(cursor)}`);
+export function listSignals(cursor = 0, since = "", pendingIds = []) {
+  const query = new URLSearchParams({ cursor: String(cursor) });
+  if (since) {
+    query.set("since", since);
+    query.set("pendingIds", pendingIds.join(","));
+  }
+  return apiJson(`/api/signals?${query}`);
 }
 
 export function saveSignal(signal) {

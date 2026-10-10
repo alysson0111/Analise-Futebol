@@ -1,3 +1,10 @@
+export function selectPendingSignalIds(signals, offset = 0, limit = 20) {
+  const pending = signals.filter((signal) => signal.id && signal.result === "pendente" && !signal.finalConfirmed);
+  const start = pending.length ? offset % pending.length : 0;
+  const ids = Array.from({ length: Math.min(limit, pending.length) }, (_, i) => pending[(start + i) % pending.length].id);
+  return { ids, nextOffset: pending.length ? (start + ids.length) % pending.length : 0 };
+}
+
 export function mergeReportSignals(current, incoming, deletedIds = new Set()) {
   const records = new Map(current.filter((signal) => !deletedIds.has(signal.id)).map((signal) => [signal.id, signal]));
   for (const signal of incoming) {
