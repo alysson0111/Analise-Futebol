@@ -226,7 +226,7 @@ export function totalCornerRowsToFixtures(rows) {
     return {
       fixture: {
         id: `totalcorner-${row.league}-${row.home}-${row.away}-${row.time}`,
-        date: `${today}T${String(row.time || "00:00").padStart(5, "0")}:00-03:00`,
+        date: `${row.dateIso || today}T${String(row.time || "00:00").padStart(5, "0")}:00-03:00`,
         status: { elapsed: status.elapsed, short: status.short }
       },
       teams: {
@@ -334,5 +334,5 @@ export async function fetchTotalCornerDate(dateIso) {
   });
 
   if (!response.ok) throw new Error(`TotalCorner retornou ${response.status}.`);
-  return parseTotalCornerMarkdown(await response.text());
+  return parseTotalCornerMarkdown(await response.text()).map((row) => ({ ...row, dateIso }));
 }

@@ -17,18 +17,21 @@ export function escapeCsv(value) {
 export function calculateReport(signals) {
   const green = signals.filter((signal) => signal.result === "green").length;
   const red = signals.filter((signal) => signal.result === "red").length;
+  const push = signals.filter((signal) => signal.result === "push").length;
   const done = green + red;
   const profit = signals.reduce((sum, signal) => {
-    if (signal.result === "green") return sum + Math.max(0, Number(signal.odd || 0) - 1);
-    if (signal.result === "red") return sum - 1;
+    const factor = signal.settlementFactor ?? 1;
+    if (signal.result === "green") return sum + Math.max(0, Number(signal.odd || 0) - 1) * factor;
+    if (signal.result === "red") return sum - factor;
     return sum;
   }, 0);
   return {
     total: signals.length,
     green,
     red,
+    push,
     hitRate: done ? Math.round((green / done) * 100) : 0,
     profit,
-    roi: done ? Math.round((profit / done) * 100) : 0
+    roi: done + push ? Math.round((profit / (done + push)) * 100) : 0
   };
 }

@@ -1,6 +1,7 @@
 import { getDb, now } from "./_lib/firebase.js";
 import { analyzeFixtures } from "./_lib/scanner.js";
 import { fetchTotalCornerDate, fetchTotalCornerToday, totalCornerRowsToFixtures } from "./_lib/totalCorner.js";
+import { isFinishedGame, buildFinalSignalUpdate } from "../src/analysis/signalSettlement.js";
 
 const FINISHED_STATUSES = new Set(["FT", "AET", "PEN"]);
 const SIGNALS_READ_LIMIT = 2000;
@@ -60,12 +61,16 @@ function cleanSignal(input) {
     oddFetchedAt: String(input.oddFetchedAt || ""),
     confidence: Number(analysis.confianca || input.confidence || 0),
     scoreText: String(input.scoreText || ""),
+    entryScoreText: String(input.scoreText || ""),
+    entryLiveStatus: String(input.liveStatus || ""),
+    entryLiveCorners: Number.isFinite(liveCorners) ? liveCorners : null,
+    settlementPolicy: "final-only",
     liveStatus: String(input.liveStatus || ""),
     dateText: String(input.dateText || ""),
     stats: stats.map(String).filter(Boolean).slice(0, 20),
     signalLines: normalizedSignalLines.slice(0, 10),
     liveCorners: Number.isFinite(liveCorners) ? liveCorners : null,
-    result: input.result === "green" || input.result === "red" ? input.result : "pendente",
+    result: "pendente",
     createdAtText: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })
   };
 }
@@ -100,13 +105,6 @@ function parseScoreTotal(scoreText) {
 function elapsedFromStatus(value) {
   const match = String(value || "").match(/\d{1,3}/);
   return match ? asNumber(match[0]) : 0;
-}
-
-function isFinishedGame(game) {
-  if (game.forceFinished) return true;
-  const status = String(game.apiStatus || game.fixture?.status?.short || "").toUpperCase();
-  const elapsed = asNumber(game.fixture?.status?.elapsed || game.elapsed || elapsedFromStatus(game.liveStatus));
-  return FINISHED_STATUSES.has(status) || elapsed >= 90;
 }
 
 function asNumber(value, fallback = 0) {
@@ -156,7 +154,7 @@ function ptDateToIso(dateText) {
 function uniqueRows(rows) {
   const seen = new Set();
   return (rows || []).filter((row) => {
-    const key = `${row.league || ""}|${row.home || ""}|${row.away || ""}|${row.time || ""}`;
+    const key = `${row.dateIso || ""}|${row.league || ""}|${row.home || ""}|${row.away || ""}|${row.time || ""}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -165,7 +163,7 @@ function uniqueRows(rows) {
 
 function shouldFetchDatedResult(signal) {
   const liveStatus = String(signal.liveStatus || "").toUpperCase();
-  if (!signal.dateText || liveStatus === "NS" || liveStatus === "PRE-JOGO") return false;
+  if (!signal.dateText) return false;
   if (FINISHED_STATUSES.has(liveStatus)) return true;
 
   const elapsed = elapsedFromStatus(liveStatus);
@@ -215,123 +213,6 @@ function parseForebetMatchScore(markdown) {
   };
 }
 
-function getSignalSettlement(signal, game) {
-  const market = normalizeMarketName(signal.market || signal.marketLabel);
-  const totalGoals = Number.isFinite(Number(game.totalGoals)) ? Number(game.totalGoals) : parseScoreTotal(game.scoreText);
-  const finished = isFinishedGame(game);
-  const corners = Number(game.liveCorners || 0);
-  const [homeGoals, awayGoals] = String(game.scoreText || "").split("x").map((part) => Number(part.trim()));
-  const mlResult = Number.isFinite(homeGoals) && Number.isFinite(awayGoals)
-    ? (homeGoals > awayGoals ? "home" : awayGoals > homeGoals ? "away" : "draw")
-    : "";
-
-  if (market.includes("over05") || market.includes("+0.5")) {
-    if (totalGoals >= 1) return "green";
-    return finished ? "red" : "";
-  }
-
-  if (market.includes("over15") || market.includes("+1.5")) {
-    if (totalGoals >= 2) return "green";
-    return finished ? "red" : "";
-  }
-
-  if (market.includes("over25") || market.includes("+2.5")) {
-    if (totalGoals >= 3) return "green";
-    return finished ? "red" : "";
-  }
-
-  if (market.includes("under25") || market.includes("under2.5")) {
-    if (totalGoals >= 3) return "red";
-    return finished ? "green" : "";
-  }
-
-  if (market.includes("under35") || market.includes("under3.5")) {
-    if (totalGoals >= 4) return "red";
-    return finished ? "green" : "";
-  }
-
-  if (market.includes("corner") || market.includes("escanteio")) {
-    if (game.liveCorners === null || game.liveCorners === undefined || game.liveCorners === "") return "";
-    if (corners >= 9) return "green";
-    return finished ? "red" : "";
-  }
-
-  if (market === "ml" || market.includes("moneyline")) {
-    if (!finished || !signal.mlPick || !mlResult) return "";
-    return signal.mlPick === mlResult ? "green" : "red";
-  }
-
-  if (market.includes("handicap")) {
-    const line = Number.isFinite(Number(game.handicapLine)) ? Number(game.handicapLine) : extractHandicapLine(signal);
-    if (!finished || !Number.isFinite(homeGoals) || !Number.isFinite(awayGoals) || !Number.isFinite(line)) return "";
-    const adjustedHome = homeGoals + line;
-    if (adjustedHome > awayGoals) return "green";
-    if (adjustedHome < awayGoals) return "red";
-    return "";
-  }
-
-  return "";
-}
-
-function shouldResetUnverifiedSettlement(signal) {
-  if (signal.result !== "green" && signal.result !== "red") return false;
-  if (isFinishedGame(signal)) return false;
-
-  const market = normalizeMarketName(signal.market || signal.marketLabel);
-  const totalGoals = parseScoreTotal(signal.scoreText);
-  const corners = Number(signal.liveCorners || 0);
-
-  if (market.includes("over05") || market.includes("+0.5")) {
-    return signal.result === "red" && totalGoals < 1;
-  }
-
-  if (market.includes("over15") || market.includes("+1.5")) {
-    return signal.result === "red" && totalGoals < 2;
-  }
-
-  if (market.includes("over25") || market.includes("+2.5")) {
-    return signal.result === "red" && totalGoals < 3;
-  }
-
-  if (market.includes("under25") || market.includes("under2.5")) {
-    return signal.result === "green" && totalGoals < 3;
-  }
-
-  if (market.includes("under35") || market.includes("under3.5")) {
-    return signal.result === "green" && totalGoals < 4;
-  }
-
-  if (market.includes("corner") || market.includes("escanteio")) {
-    return signal.result === "red" && corners < 9;
-  }
-
-  if (market === "ml" || market.includes("moneyline")) {
-    return true;
-  }
-
-  if (market.includes("handicap")) {
-    return true;
-  }
-
-  return false;
-}
-
-async function resetUnverifiedSettlements(db, signals) {
-  const updates = new Map();
-  for (const signal of signals) {
-    if (!signal.id || !shouldResetUnverifiedSettlement(signal)) continue;
-    const update = {
-      result: "pendente",
-      settledAtText: "",
-      updatedAt: now()
-    };
-    updates.set(signal.id, update);
-    await db.collection("sinais").doc(signal.id).update(update);
-  }
-  return updates.size
-    ? signals.map((signal) => updates.has(signal.id) ? { ...signal, ...updates.get(signal.id) } : signal)
-    : signals;
-}
 
 function normalizeTeam(value) {
   return String(value || "")
@@ -357,6 +238,7 @@ function teamMatchScore(a, b) {
 }
 
 function findCurrentGame(signal, games) {
+  games = games.filter((game) => game.dateText === signal.dateText);
   const sameSource = games.filter((game) => game.sourceId === signal.sourceId);
   const sourceMatch = sameSource.find((game) => game.market === signal.market) || sameSource[0];
   if (sourceMatch) return sourceMatch;
@@ -374,37 +256,8 @@ function findCurrentGame(signal, games) {
   return bestScore >= 0.65 ? best : null;
 }
 
-function currentGameUpdate(signal, game, result) {
-  const mlPick = game.mlPick || signal.mlPick || "";
-  const mlPickLabel = game.mlPickLabel || signal.mlPickLabel || mlLabelFromPick(mlPick, signal) || mlLabelFromPick(mlPick, game) || "";
-  return {
-    result: result || signal.result || "pendente",
-    scoreText: game.scoreText || signal.scoreText || "",
-    liveStatus: game.liveStatus || signal.liveStatus || "",
-    dateText: game.dateText || signal.dateText || "",
-    mlPick,
-    mlPickLabel,
-    handicapLine: Number.isFinite(Number(game.handicapLine)) ? Number(game.handicapLine) : signal.handicapLine,
-    liveCorners: Number.isFinite(Number(game.liveCorners)) ? Number(game.liveCorners) : signal.liveCorners,
-    signalLines: Array.isArray(game.generatedSignals) && game.generatedSignals.length ? game.generatedSignals : signal.signalLines || []
-  };
-}
-
-function shouldPersistCurrentUpdate(signal, update) {
-  return update.result !== signal.result
-    || String(update.scoreText || "") !== String(signal.scoreText || "")
-    || String(update.liveStatus || "") !== String(signal.liveStatus || "")
-    || String(update.dateText || "") !== String(signal.dateText || "")
-    || String(update.mlPick || "") !== String(signal.mlPick || "")
-    || String(update.mlPickLabel || "") !== String(signal.mlPickLabel || "")
-    || ((Number.isFinite(Number(update.handicapLine)) || Number.isFinite(Number(signal.handicapLine)))
-      && Number(update.handicapLine) !== Number(signal.handicapLine))
-    || Number(update.liveCorners ?? -1) !== Number(signal.liveCorners ?? -1)
-    || JSON.stringify(update.signalLines || []) !== JSON.stringify(signal.signalLines || []);
-}
-
 async function settleSignalsFromTotalCorner(db, signals) {
-  const pending = signals.filter((signal) => signal.id && signal.result === "pendente");
+  const pending = signals.filter((signal) => signal.id && !signal.finalConfirmed && (signal.result === "pendente" || !isFinishedGame(signal)));
   if (!pending.length) return signals;
 
   const updates = new Map();
@@ -429,13 +282,12 @@ async function settleSignalsFromTotalCorner(db, signals) {
   for (const signal of pending) {
     const game = findCurrentGame(signal, games);
     if (!game) continue;
-    const result = getSignalSettlement(signal, game);
-    const currentUpdate = currentGameUpdate(signal, game, result);
-    if (!shouldPersistCurrentUpdate(signal, currentUpdate)) continue;
+    const currentUpdate = buildFinalSignalUpdate(signal, game);
+    if (!currentUpdate) continue;
 
     const settlement = {
       ...currentUpdate,
-      settledAtText: result ? new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : signal.settledAtText || "",
+      settledAtText: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
       updatedAt: now()
     };
     updates.set(signal.id, settlement);
@@ -449,8 +301,7 @@ async function listSignals(res) {
   const db = getDb();
   const snapshot = await db.collection("sinais").orderBy("createdAt", "desc").limit(SIGNALS_READ_LIMIT).get();
   const signals = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  const verifiedSignals = await resetUnverifiedSettlements(db, signals);
-  const settledSignals = await settleSignalsFromTotalCorner(db, verifiedSignals);
+  const settledSignals = await settleSignalsFromTotalCorner(db, signals);
   send(res, 200, { signals: settledSignals, limit: SIGNALS_READ_LIMIT });
 }
 
@@ -465,16 +316,7 @@ async function saveSignal(req, res) {
   if (!existing.empty) {
     const doc = existing.docs[0];
     const previous = doc.data();
-    const merged = {
-      ...record,
-      result: previous.result || record.result,
-      createdAtText: previous.createdAtText || record.createdAtText
-    };
-    await doc.ref.update({
-      ...merged,
-      updatedAt: now()
-    });
-    return send(res, 200, { id: doc.id, ...previous, ...merged, duplicate: true });
+    return send(res, 200, { id: doc.id, ...previous, duplicate: true });
   }
 
   const doc = await db.collection("sinais").add({
@@ -488,27 +330,28 @@ async function saveSignal(req, res) {
 
 async function updateResult(req, res) {
   const db = getDb();
-  const { id, result, scoreText, liveStatus, dateText, mlPick, mlPickLabel, handicapLine, liveCorners, signalLines } = readBody(req);
-  if (!id || !["green", "red", "pendente"].includes(result)) {
+  const { id, result, scoreText, liveStatus, liveCorners } = readBody(req);
+  if (!id || !["green", "push", "red", "pendente"].includes(result)) {
     return send(res, 400, { error: "Resultado invalido." });
   }
 
+  const doc = db.collection("sinais").doc(String(id));
+  const snapshot = await doc.get();
+  if (!snapshot.exists) return send(res, 404, { error: "Sinal nao encontrado." });
+  const signal = snapshot.data();
+  let finalUpdate;
+  if (scoreText && isFinishedGame({ liveStatus })) {
+    finalUpdate = buildFinalSignalUpdate(signal, { scoreText, liveStatus, liveCorners });
+    if (!finalUpdate || finalUpdate.result !== result) return send(res, 400, { error: "Resultado nao corresponde ao sinal salvo." });
+  } else if (!signal.finalConfirmed && !isFinishedGame(signal)) {
+    return send(res, 409, { error: "O sinal aguarda a confirmacao de fim do jogo." });
+  }
   const update = {
-    result,
+    ...(finalUpdate || { result, settlementFactor: result === "push" ? 0 : 1 }),
     settledAtText: result === "pendente" ? "" : new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
     updatedAt: now()
   };
-
-  if (scoreText) update.scoreText = String(scoreText);
-  if (liveStatus) update.liveStatus = String(liveStatus);
-  if (dateText) update.dateText = String(dateText);
-  if (mlPick) update.mlPick = String(mlPick);
-  if (mlPickLabel) update.mlPickLabel = String(mlPickLabel);
-  if (Number.isFinite(Number(handicapLine))) update.handicapLine = Number(handicapLine);
-  if (Number.isFinite(Number(liveCorners))) update.liveCorners = Number(liveCorners);
-  if (Array.isArray(signalLines)) update.signalLines = signalLines.map(String).filter(Boolean).slice(0, 10);
-
-  await db.collection("sinais").doc(String(id)).update(update);
+  await doc.update(update);
 
   send(res, 200, { ok: true, ...update });
 }

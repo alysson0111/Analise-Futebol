@@ -4,6 +4,7 @@ import Live from "./pages/Live.jsx";
 import Prematch from "./pages/Prematch.jsx";
 import GameDetails from "./pages/GameDetails.jsx";
 import { getTodayInput } from "./analysis/scoreUtils.js";
+import { buildFinalSignalUpdate } from "./analysis/signalSettlement.js";
 import { useLiveGames } from "./hooks/useLiveGames.js";
 import { usePrematchGames } from "./hooks/usePrematchGames.js";
 import { useGameAnalysis } from "./hooks/useGameAnalysis.js";
@@ -105,6 +106,7 @@ const styles = `
   .result-pill { display: inline-flex; align-items: center; justify-content: center; min-width: 78px; min-height: 30px; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 900; text-transform: uppercase; }
   .result-pill.green { background: #e9f7f0; color: var(--green-dark); border: 1px solid var(--green); }
   .result-pill.red { background: #fdecec; color: var(--red); border: 1px solid var(--red); }
+  .result-pill.push { background: #edf6fc; color: #174f7a; border: 1px solid var(--blue); }
   .result-pill.pending { background: #fff3de; color: #8a5207; border: 1px solid #f0c985; }
   .report-actions-cell { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .report-actions-cell .btn { min-height: 32px; padding: 0 10px; }
@@ -150,98 +152,6 @@ const styles = `
   }
 `;
 
-const FINISHED_STATUSES = new Set(["FT", "AET", "PEN"]);
-
-function parseScoreTotal(scoreText) {
-  const parts = String(scoreText || "").split("x").map((part) => Number(part.trim()));
-  return parts.length === 2 && parts.every(Number.isFinite) ? parts[0] + parts[1] : 0;
-}
-
-function getGameTotalGoals(game) {
-  const total = Number(game?.totalGoals);
-  return Number.isFinite(total) ? total : parseScoreTotal(game?.scoreText);
-}
-
-function isFinishedGame(game) {
-  const status = String(game?.apiStatus || "").toUpperCase();
-  const elapsed = Number(String(game?.liveStatus || game?.fixture?.status?.elapsed || "").match(/\d{1,3}/)?.[0] || 0);
-  return FINISHED_STATUSES.has(status) || elapsed >= 90;
-}
-
-function normalizeMarketName(value) {
-  return String(value || "").toLowerCase().replace(/\s+/g, "");
-}
-
-function extractHandicapLine(value) {
-  if (Number.isFinite(Number(value?.handicapLine))) return Number(value.handicapLine);
-  const text = [
-    ...(Array.isArray(value?.signalLines) ? value.signalLines : []),
-    ...(Array.isArray(value?.signals) ? value.signals : []),
-    ...(Array.isArray(value?.stats) ? value.stats : [])
-  ].join(" ");
-  const match = text.match(/Handicap[^+-]*([+-]\d+(?:\.\d+)?|0\.0)/i);
-  const line = match ? Number(match[1]) : NaN;
-  return Number.isFinite(line) ? line : NaN;
-}
-
-function getSignalSettlement(signal, game) {
-  if (!game) return "";
-
-  const market = normalizeMarketName(signal.market || signal.marketLabel);
-  const totalGoals = getGameTotalGoals(game);
-  const finished = isFinishedGame(game);
-  const corners = Number(game.liveCorners || 0);
-  const scoreParts = String(game.scoreText || "").split("x").map((part) => Number(part.trim()));
-  const mlResult = scoreParts.length === 2 && scoreParts.every(Number.isFinite)
-    ? (scoreParts[0] > scoreParts[1] ? "home" : scoreParts[1] > scoreParts[0] ? "away" : "draw")
-    : "";
-
-  if (market.includes("over05") || market.includes("+0.5")) {
-    if (totalGoals >= 1) return "green";
-    return finished ? "red" : "";
-  }
-
-  if (market.includes("over15") || market.includes("+1.5")) {
-    if (totalGoals >= 2) return "green";
-    return finished ? "red" : "";
-  }
-
-  if (market.includes("over25") || market.includes("+2.5")) {
-    if (totalGoals >= 3) return "green";
-    return finished ? "red" : "";
-  }
-
-  if (market.includes("under25") || market.includes("under2.5")) {
-    if (totalGoals >= 3) return "red";
-    return finished ? "green" : "";
-  }
-
-  if (market.includes("under35") || market.includes("under3.5")) {
-    if (totalGoals >= 4) return "red";
-    return finished ? "green" : "";
-  }
-
-  if (market.includes("corner") || market.includes("escanteio")) {
-    if (corners >= 9) return "green";
-    return finished ? "red" : "";
-  }
-
-  if (market === "ml" || market.includes("moneyline")) {
-    if (!finished || !signal.mlPick || !mlResult) return "";
-    return signal.mlPick === mlResult ? "green" : "red";
-  }
-
-  if (market.includes("handicap")) {
-    const line = Number.isFinite(Number(game.handicapLine)) ? Number(game.handicapLine) : extractHandicapLine(signal);
-    if (!finished || scoreParts.length !== 2 || !scoreParts.every(Number.isFinite) || !Number.isFinite(line)) return "";
-    const adjustedHome = scoreParts[0] + line;
-    if (adjustedHome > scoreParts[1]) return "green";
-    if (adjustedHome < scoreParts[1]) return "red";
-    return "";
-  }
-
-  return "";
-}
 
 export default function App() {
   const today = useMemo(() => getTodayInput(), []);
@@ -335,33 +245,16 @@ export default function App() {
       const candidates = gamesBySource.get(signal.sourceId) || [];
       const game = candidates.find((item) => item.market === signal.market) || candidates[0];
       if (!game) return;
-      const result = getSignalSettlement(signal, game);
-      const settlement = {
-        scoreText: game.scoreText || signal.scoreText || "",
-        liveStatus: game.liveStatus || signal.liveStatus || "",
-        dateText: game.dateText || signal.dateText || "",
-        mlPick: game.mlPick || signal.mlPick || "",
-        mlPickLabel: game.mlPickLabel || signal.mlPickLabel || "",
-        handicapLine: Number.isFinite(Number(game.handicapLine)) ? Number(game.handicapLine) : signal.handicapLine,
-        liveCorners: Number.isFinite(Number(game.liveCorners)) ? Number(game.liveCorners) : signal.liveCorners,
-        signalLines: Array.isArray(game.signals) && game.signals.length ? game.signals : signal.signalLines || []
-      };
-      const changed = result
-        || String(settlement.scoreText || "") !== String(signal.scoreText || "")
-        || String(settlement.liveStatus || "") !== String(signal.liveStatus || "")
-        || String(settlement.dateText || "") !== String(signal.dateText || "")
-        || ((Number.isFinite(Number(settlement.handicapLine)) || Number.isFinite(Number(signal.handicapLine)))
-          && Number(settlement.handicapLine) !== Number(signal.handicapLine))
-        || Number(settlement.liveCorners ?? -1) !== Number(signal.liveCorners ?? -1);
-      if (!changed) return;
+      if (game.dateText !== signal.dateText) return;
+      const settlement = buildFinalSignalUpdate(signal, game);
+      if (!settlement) return;
+      const result = settlement.result;
 
       settlingSignalIdsRef.current.add(signal.id);
-      updateSignalResult(signal.id, result || "pendente", settlement)
+      updateSignalResult(signal.id, result, settlement)
         .then((payload) => {
-          if (cancelled) return;
-          setSignals((current) => current.map((item) => item.id === signal.id ? { ...item, ...settlement, ...payload, result: result || "pendente" } : item));
-          if (!result) settlingSignalIdsRef.current.delete(signal.id);
-          setBankStatus(result ? `Sinal ${result.toUpperCase()} atualizado automaticamente.` : "Placar do sinal atualizado automaticamente.");
+          setSignals((current) => current.map((item) => item.id === signal.id ? { ...item, ...payload } : item));
+          setBankStatus(`Sinal ${result.toUpperCase()} atualizado ao fim do jogo.`);
         })
         .catch((error) => {
           settlingSignalIdsRef.current.delete(signal.id);
@@ -386,9 +279,13 @@ export default function App() {
   }
 
   async function changeSignalResult(id, result) {
-    await updateSignalResult(id, result);
-    settlingSignalIdsRef.current.add(id);
-    setSignals((current) => current.map((signal) => signal.id === id ? { ...signal, result } : signal));
+    try {
+      const update = await updateSignalResult(id, result);
+      settlingSignalIdsRef.current.add(id);
+      setSignals((current) => current.map((signal) => signal.id === id ? { ...signal, ...update } : signal));
+    } catch (error) {
+      setBankStatus(`Erro ao atualizar sinal: ${error.message}`);
+    }
   }
 
   async function removeSignal(id) {

@@ -4,6 +4,7 @@ import GameCard from "../components/GameCard.jsx";
 import StatsBox from "../components/StatsBox.jsx";
 import { getMarketLabel } from "../analysis/index.js";
 import { calculateReport, currencyOdd, escapeCsv, getTodayInput } from "../analysis/scoreUtils.js";
+import { isFinishedGame } from "../analysis/signalSettlement.js";
 
 const REPORT_MARKETS = ["all", "over05", "over15", "over25", "under25", "under35", "corners", "handicap", "ml"];
 const DEFAULT_CORNER_LINE = "Over 9.5 escanteios";
@@ -110,14 +111,15 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
     return signals.filter((signal) => signal.market === reportMarket);
   }, [signals, reportMarket]);
   const report = calculateReport(filteredSignals);
-  const resultLabel = { green: "Green", red: "Red", pendente: "Pendente" };
+  const resultLabel = { green: "Green", push: "Push", red: "Red", pendente: "Pendente" };
 
   function exportCsv() {
-    const header = ["data_hora", "jogo", "liga", "resultado_final", "mercado", "sinal", "escanteios_jogo", "odd", "confianca", "resultado", "scanner"];
+    const header = ["data_hora", "jogo", "liga", "placar_entrada", "placar", "mercado", "sinal", "escanteios_jogo", "odd", "confianca", "resultado", "scanner"];
     const rows = filteredSignals.map((signal) => [
       signal.createdAtText || "",
       `${signal.home} x ${signal.away}`,
       signal.league || "",
+      signal.entryScoreText ?? "",
       signal.scoreText || "",
       signal.marketLabel || signal.market || "",
       getSignalText(signal),
@@ -171,7 +173,7 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
           <h1>Relatorio de sinais</h1>
           <p>Mercado: ${selectedMarketLabel}</p>
           <table>
-            <thead><tr><th>Data/Hora</th><th>Jogo</th><th>Liga</th><th>Resultado final</th><th>Mercado</th><th>Sinal</th><th>Escanteios jogo</th><th>Odd</th><th>Confianca</th><th>Resultado</th></tr></thead>
+            <thead><tr><th>Data/Hora</th><th>Jogo</th><th>Liga</th><th>Placar</th><th>Mercado</th><th>Sinal</th><th>Escanteios jogo</th><th>Odd</th><th>Confianca</th><th>Resultado</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </body>
@@ -209,6 +211,7 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
           <div className="mini-stat"><span>Total</span><strong>{report.total}</strong></div>
           <div className="mini-stat"><span>Green</span><strong>{report.green}</strong></div>
           <div className="mini-stat"><span>Red</span><strong>{report.red}</strong></div>
+          <div className="mini-stat"><span>Push</span><strong>{report.push}</strong></div>
           <div className="mini-stat"><span>Assertividade</span><strong>{report.hitRate}%</strong></div>
           <div className="mini-stat"><span>ROI</span><strong>{report.roi}%</strong></div>
         </div>
@@ -219,7 +222,7 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
                 <th>Data/Hora</th>
                 <th>Jogo</th>
                 <th>Liga</th>
-                <th>Resultado final</th>
+                <th>Placar</th>
                 <th>Mercado</th>
                 <th>Sinal</th>
                 <th>Escanteios jogo</th>
@@ -236,20 +239,21 @@ export function SignalsReport({ signals, bankStatus, changeSignalResult, removeS
                   <td>{signal.createdAtText || "-"}</td>
                   <td>{signal.home} x {signal.away}</td>
                   <td>{signal.league || "-"}</td>
-                  <td>{signal.scoreText || "-"}</td>
+                  <td title={signal.finalConfirmed ? `Placar da entrada: ${signal.entryScoreText || "-"}` : "Placar da entrada"}>{signal.scoreText || "-"}</td>
                   <td>{signal.marketLabel || signal.market}</td>
                   <td>{getSignalText(signal)}</td>
                   <td>{getCornerCount(signal)}</td>
                   <td>{currencyOdd(signal.odd)}</td>
                   <td>{Math.round(Number(signal.confidence || 0))}%</td>
                   <td>
-                    <span className={`result-pill ${signal.result === "green" ? "green" : signal.result === "red" ? "red" : "pending"}`}>
+                    <span className={`result-pill ${["green", "push", "red"].includes(signal.result) ? signal.result : "pending"}`}>
                       {resultLabel[signal.result] || "Pendente"}
                     </span>
                   </td>
                   <td className="report-actions-cell">
-                    <button className="btn green" onClick={() => changeSignalResult(signal.id, "green")}>Green</button>
-                    <button className="btn red" onClick={() => changeSignalResult(signal.id, "red")}>Red</button>
+                    <button className="btn green" disabled={!isFinishedGame(signal)} onClick={() => changeSignalResult(signal.id, "green")}>Green</button>
+                    <button className="btn" disabled={!isFinishedGame(signal)} onClick={() => changeSignalResult(signal.id, "push")}>Push</button>
+                    <button className="btn red" disabled={!isFinishedGame(signal)} onClick={() => changeSignalResult(signal.id, "red")}>Red</button>
                     <button className="btn red" onClick={() => removeSignal(signal.id)}>Excluir</button>
                   </td>
                 </tr>
