@@ -131,6 +131,7 @@ function parseBlock(block) {
 
 function parseCompactRecord(record) {
   const text = String(record || "").replace(/\s+/g, " ").trim();
+  if (text.includes("|")) return null;
   const teamMatches = [
     ...text.matchAll(/\[([^\]]+)\]\(https:\/\/www\.totalcorner\.com\/pt\/team\/view\/[^)]*\)/g)
   ];
@@ -189,6 +190,34 @@ function parseCompactRows(markdown) {
     )
   ];
   return records.map((match) => parseCompactRecord(match[1])).filter((row) => row && row.home && row.away);
+}
+
+function parseMarkdownTableRows(markdown) {
+  return String(markdown || "").split("\n").filter((line) => line.includes("|")).map((line) => {
+    const cells = line.split("|").map((cell) => cleanLine(stripMarkdownImages(cell)));
+    const scoreIndex = cells.findIndex((cell) => isScoreLine(cell));
+    const timeIndex = cells.findIndex((cell) => /^\d{2}:\d{2}$/.test(cell));
+    if (scoreIndex < 2 || timeIndex < 0 || timeIndex >= scoreIndex - 1) return null;
+    const goals = parseScorePair(cells[scoreIndex]);
+    const home = cleanTeam(cells[scoreIndex - 1]);
+    const away = cleanTeam(cells[scoreIndex + 1]);
+    if (!home || !away) return null;
+    const statusCell = cells.slice(timeIndex + 1, scoreIndex - 1).join(" ").trim();
+    const status = statusCell.match(/^(Integral|FT|HT|Intervalo|\d{1,3})\b/i)?.[1] || "";
+    const cornersMatch = String(cells[scoreIndex + 3] || "").match(/^(\d+)\s*-\s*(\d+)/);
+    return {
+      league: cells.slice(0, timeIndex).filter(Boolean).at(-1) || "TotalCorner",
+      time: cells[timeIndex], status, home, away,
+      homeGoals: goals.home, awayGoals: goals.away,
+      homeCorners: cornersMatch ? Number(cornersMatch[1]) : null,
+      awayCorners: cornersMatch ? Number(cornersMatch[2]) : null,
+      liveCorners: cornersMatch ? Number(cornersMatch[1]) + Number(cornersMatch[2]) : null,
+      handicapLine: parseHandicapLine(String(cells[scoreIndex + 2] || "").replace(/\s*\([^)]*\)\s*$/, "")),
+      cornerLine: parseCornerLine(cells[scoreIndex + 4]),
+      goalLine: parseGoalLine(cells[scoreIndex + 5]),
+      source: "TotalCorner"
+    };
+  }).filter(Boolean);
 }
 
 function getSaoPauloDateText() {
@@ -266,7 +295,7 @@ export function parseTotalCornerMarkdown(markdown) {
   const footerIndex = text.indexOf("Para usar nossos dados");
   const section = footerIndex > 0 ? text.slice(0, footerIndex) : text;
   const tableRows = parseTotalCornerMarkdownLegacy(section);
-  const combined = [...tableRows, ...parseCompactRows(section)];
+  const combined = [...parseMarkdownTableRows(section), ...tableRows, ...parseCompactRows(section)];
   const seen = new Set();
   return combined.filter((row) => {
     const key = `${row.home}|${row.away}|${row.time}|${row.status}|${row.homeGoals}|${row.awayGoals}`;

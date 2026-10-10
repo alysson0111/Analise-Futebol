@@ -235,6 +235,7 @@ async function settleSignalsFromTotalCorner(db, signals, cursor = 0) {
     });
     const totalCornerRows = rowResults.flatMap((result) => result.status === "fulfilled" ? result.value : []);
     games = analyzeFixtures({ response: totalCornerRowsToFixtures(uniqueRows(totalCornerRows)) });
+    settlementStatus.finalGamesFound = games.filter(isFinishedGame).length;
   } catch (error) {
     settlementStatus.errors.push(error.message || "Falha na consulta de resultados");
     return { signals, settlement: settlementStatus };

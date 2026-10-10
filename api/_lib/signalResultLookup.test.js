@@ -62,3 +62,18 @@ test("reader errors propagate instead of silently reporting no results", async (
     globalThis.fetch = original;
   }
 });
+
+test("current pipe-separated tables preserve the final status and score", () => {
+  const markdown = `| Liga | Hora | Tempo | Mandante | Placar | Visitante | Handicap | Escanteios | Linha | Gols |
+| ![Image 1](https://static.totalcorner.com/img/countries/jp.png) | [Japao - J2](https://www.totalcorner.com/pt/league/1) | 09:00 | Integral | [3] [Jubilo Iwata](https://www.totalcorner.com/pt/team/view/1) | 1 - 0 | [Hokkaido Consadole Sapporo](https://www.totalcorner.com/pt/team/view/2) [18] | -0.75 (-0.25) | 5 - 3 (2-1) | 10.5 (8.5) | 2.5 (1.5) | Detalhes |`;
+  const rows = parseTotalCornerMarkdown(markdown);
+  const row = rows.find((item) => item.status === "Integral");
+  assert.ok(row);
+  assert.equal(row.home, "Jubilo Iwata");
+  assert.equal(row.away, "Hokkaido Consadole Sapporo");
+  assert.equal(row.liveCorners, 8);
+  assert.equal(row.handicapLine, -0.75);
+  const game = analyzeFixtures({ response: totalCornerRowsToFixtures([row]) })[0];
+  assert.equal(game.apiStatus, "FT");
+  assert.equal(buildFinalSignalUpdate({ market: "over05", scoreText: "0x0" }, game).result, "green");
+});
