@@ -1,6 +1,6 @@
 import { getDb, now } from "./_lib/firebase.js";
 import { analyzeFixtures } from "./_lib/scanner.js";
-import { fetchTotalCornerDate, fetchTotalCornerToday, totalCornerRowsToFixtures } from "./_lib/totalCorner.js";
+import { fetchTotalCornerDate, totalCornerRowsToFixtures } from "./_lib/totalCorner.js";
 import { isFinishedGame, buildFinalSignalUpdate } from "../src/analysis/signalSettlement.js";
 import { selectResultDates, findResultGame } from "./_lib/signalResultLookup.js";
 
@@ -225,13 +225,10 @@ async function settleSignalsFromTotalCorner(db, signals, cursor = 0) {
   const plan = selectResultDates(pending, cursor);
   const settlementStatus = { updated: 0, errors: [], checkedDates: plan.dates, nextCursor: plan.nextCursor };
   try {
-    const rowResults = await Promise.allSettled([
-      fetchTotalCornerToday(),
-      ...plan.dates.map((dateIso) => fetchTotalCornerDate(dateIso))
-    ]);
+    const rowResults = await Promise.allSettled(plan.dates.map((dateIso) => fetchTotalCornerDate(dateIso)));
     rowResults.forEach((result, index) => {
-      if (result.status === "rejected") settlementStatus.errors.push(`${index === 0 ? "Hoje" : plan.dates[index - 1]}: ${result.reason?.message || "Falha ao buscar resultado"}`);
-      else if (!result.value.length) settlementStatus.errors.push(`${index === 0 ? "Hoje" : plan.dates[index - 1]}: fonte sem jogos legiveis`);
+      if (result.status === "rejected") settlementStatus.errors.push(`${plan.dates[index]}: ${result.reason?.message || "Falha ao buscar resultado"}`);
+      else if (!result.value.length) settlementStatus.errors.push(`${plan.dates[index]}: fonte sem jogos legiveis`);
     });
     const totalCornerRows = rowResults.flatMap((result) => result.status === "fulfilled" ? result.value : []);
     games = analyzeFixtures({ response: totalCornerRowsToFixtures(uniqueRows(totalCornerRows)) });

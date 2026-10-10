@@ -63,6 +63,33 @@ test("reader errors propagate instead of silently reporting no results", async (
   }
 });
 
+test("historical results use the schedule route and reject a different date", async () => {
+  const original = globalThis.fetch;
+  try {
+    globalThis.fetch = async (url) => {
+      assert.ok(String(url).includes("/pt/match/schedule/20261009?"));
+      return { ok: true, text: async () => "URL Source: https://www.totalcorner.com/pt/match/schedule/20261009?date=2026-10-09\n# Jogos de Hoje\n2026-10-10\nLiga A\n08:00 Integral Casa 2 - 1 Fora\nEstatisticas" };
+    };
+    await assert.rejects(fetchTotalCornerDate("2026-10-09"), /nao confirmou a data/);
+    globalThis.fetch = async () => ({ ok: true, text: async () => "# Match Schedule\n2026-10-09 Sort by time\nLiga A\n08:00 Integral Casa 2 - 1 Fora" });
+    const rows = await fetchTotalCornerDate("2026-10-09");
+    assert.equal(rows[0].dateIso, "2026-10-09");
+    assert.equal(rows[0].homeGoals, 2);
+    assert.equal(rows[0].status, "Integral");
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("schedule Full labels are final and card counts cannot corrupt team names", () => {
+  const rows = parseTotalCornerMarkdown("| Liga | 00:00 | Full | 1 3 [Hartford Athletic](https://www.totalcorner.com/pt/team/view/1) | 2 - 2 | [Louisville City FC](https://www.totalcorner.com/pt/team/view/2) 3 1 | 0.0 | 7 - 7 (2-5) | 10.0 | 2.75 |");
+  assert.equal(rows[0].home, "Hartford Athletic");
+  assert.equal(rows[0].away, "Louisville City FC");
+  const game = analyzeFixtures({ response: totalCornerRowsToFixtures(rows) })[0];
+  assert.equal(game.apiStatus, "FT");
+  assert.equal(buildFinalSignalUpdate({ market: "over25", scoreText: "0x0" }, game).result, "green");
+});
+
 test("current pipe-separated tables preserve the final status and score", () => {
   const markdown = `| Liga | Hora | Tempo | Mandante | Placar | Visitante | Handicap | Escanteios | Linha | Gols |
 | ![Image 1](https://static.totalcorner.com/img/countries/jp.png) | [Japao - J2](https://www.totalcorner.com/pt/league/1) | 09:00 | Integral | [3] [Jubilo Iwata](https://www.totalcorner.com/pt/team/view/1) | 1 - 0 | [Hokkaido Consadole Sapporo](https://www.totalcorner.com/pt/team/view/2) [18] | -0.75 (-0.25) | 5 - 3 (2-1) | 10.5 (8.5) | 2.5 (1.5) | Detalhes |`;

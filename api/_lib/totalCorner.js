@@ -1,7 +1,8 @@
 const TOTALCORNER_TODAY_URL = "https://www.totalcorner.com/pt/match/today";
 
 function totalCornerDateUrl(dateIso) {
-  return `https://www.totalcorner.com/pt/match/today/${dateIso}`;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) throw new Error("Data de resultados invalida.");
+  return `https://www.totalcorner.com/pt/match/schedule/${dateIso.replaceAll("-", "")}`;
 }
 
 function readerUrl(url) {
@@ -104,7 +105,7 @@ function parseBlock(block) {
   const afterScoreRaw = scoreMatch[4];
   const handicapLine = parseHandicapLine(afterScoreRaw);
   const afterScore = afterScoreRaw.replace(/\s+[+-]?\d+(?:\.\d+)?(?:\s*\([^)]+\))?\s*$/, "");
-  const timeMatch = beforeScore.match(/^(\d{2}:\d{2})(?:\s+(\d{1,3}|Intervalo|Integral|HT|FT))?\s+(.+)$/i);
+  const timeMatch = beforeScore.match(/^(\d{2}:\d{2})(?:\s+(\d{1,3}|Intervalo|Integral|Full(?:-time)?|HT|FT))?\s+(.+)$/i);
   if (!timeMatch) return null;
 
   const cornerIndex = lines.findIndex((line, index) => index > headerIndex && isScoreLine(line));
@@ -148,7 +149,7 @@ function parseCompactRecord(record) {
     .replace(/\s+/g, " ")
     .trim();
 
-  const timeMatch = beforeHome.match(/(\d{2}:\d{2})(?:\s+(\d{1,3}|Intervalo|Integral|HT|FT))?/i);
+  const timeMatch = beforeHome.match(/(\d{2}:\d{2})(?:\s+(\d{1,3}|Intervalo|Integral|Full(?:-time)?|HT|FT))?/i);
   const goalsMatch = betweenTeams.match(/(\d+)\s*-\s*(\d+)/);
   if (!timeMatch || !goalsMatch) return null;
 
@@ -194,16 +195,18 @@ function parseCompactRows(markdown) {
 
 function parseMarkdownTableRows(markdown) {
   return String(markdown || "").split("\n").filter((line) => line.includes("|")).map((line) => {
-    const cells = line.split("|").map((cell) => cleanLine(stripMarkdownImages(cell)));
+    const rawCells = line.split("|");
+    const cells = rawCells.map((cell) => cleanLine(stripMarkdownImages(cell)));
     const scoreIndex = cells.findIndex((cell) => isScoreLine(cell));
     const timeIndex = cells.findIndex((cell) => /^\d{2}:\d{2}$/.test(cell));
     if (scoreIndex < 2 || timeIndex < 0 || timeIndex >= scoreIndex - 1) return null;
     const goals = parseScorePair(cells[scoreIndex]);
-    const home = cleanTeam(cells[scoreIndex - 1]);
-    const away = cleanTeam(cells[scoreIndex + 1]);
+    const linkedTeam = (index) => rawCells[index]?.match(/\[([^\]]+)\]\([^)]*\/team\/view\/[^)]*\)/)?.[1];
+    const home = cleanTeam(linkedTeam(scoreIndex - 1) || cells[scoreIndex - 1]);
+    const away = cleanTeam(linkedTeam(scoreIndex + 1) || cells[scoreIndex + 1]);
     if (!home || !away) return null;
     const statusCell = cells.slice(timeIndex + 1, scoreIndex - 1).join(" ").trim();
-    const status = statusCell.match(/^(Integral|FT|HT|Intervalo|\d{1,3})\b/i)?.[1] || "";
+    const status = statusCell.match(/^(Integral|Full(?:-time)?|FT|HT|Intervalo|\d{1,3})\b/i)?.[1] || "";
     const cornersMatch = String(cells[scoreIndex + 3] || "").match(/^(\d+)\s*-\s*(\d+)/);
     return {
       league: cells.slice(0, timeIndex).filter(Boolean).at(-1) || "TotalCorner",
@@ -239,7 +242,7 @@ function statusInfo(status) {
   const value = cleanLine(status);
   if (/^\d{1,3}$/.test(value)) return { elapsed: asNumber(value), short: "LIVE", liveStatus: `${value}'` };
   if (/^Intervalo|HT$/i.test(value)) return { elapsed: 45, short: "HT", liveStatus: "HT" };
-  if (/^Integral|FT$/i.test(value)) return { elapsed: 90, short: "FT", liveStatus: "FT" };
+  if (/^(Integral|Full(?:-time)?|FT)$/i.test(value)) return { elapsed: 90, short: "FT", liveStatus: "FT" };
   return { elapsed: 0, short: value ? "LIVE" : "NS", liveStatus: value || "Pre-jogo" };
 }
 
@@ -344,7 +347,7 @@ export function mergeTotalCornerRows(rows, totalCornerRows) {
   });
 }
 
-async function fetchTotalCornerPage(url) {
+async function fetchTotalCornerPage(url, expectedDate) {
   const response = await fetch(readerUrl(url), {
     signal: AbortSignal.timeout(20000),
     headers: {
@@ -357,7 +360,12 @@ async function fetchTotalCornerPage(url) {
   });
 
   if (!response.ok) throw new Error(`TotalCorner retornou ${response.status}.`);
-  return parseTotalCornerMarkdown(await response.text());
+  const markdown = await response.text();
+  const pageDates = markdown.split("\n").map(cleanLine).map((line) => line.match(/^(\d{4}-\d{2}-\d{2})(?:\s|$)/)?.[1]).filter(Boolean);
+  if (expectedDate && !pageDates.includes(expectedDate)) {
+    throw new Error(`TotalCorner nao confirmou a data ${expectedDate} na pagina de resultados.`);
+  }
+  return parseTotalCornerMarkdown(markdown);
 }
 
 export async function fetchTotalCornerToday() {
@@ -365,5 +373,5 @@ export async function fetchTotalCornerToday() {
 }
 
 export async function fetchTotalCornerDate(dateIso) {
-  return (await fetchTotalCornerPage(totalCornerDateUrl(dateIso))).map((row) => ({ ...row, dateIso }));
+  return (await fetchTotalCornerPage(totalCornerDateUrl(dateIso), dateIso)).map((row) => ({ ...row, dateIso }));
 }
