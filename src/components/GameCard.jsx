@@ -65,7 +65,7 @@ export default function GameCard({ games, updatedAt }) {
                   <td>{game.liveStatus || game.time || "-"}</td>
                   <td>{game.scoreText || "-"}</td>
                   <td>{game.analise?.label || game.marketLabel || getMarketLabel(game.market)}</td>
-                  <td>{currencyOdd(game.analise?.odd ?? game.odd)}</td>
+                  <td title={game.oddSource === "Kalshi" ? "Kalshi: cotacao convertida em odd decimal, antes das taxas" : ""}>{currencyOdd(game.analise?.odd ?? game.odd)}</td>
                   <td>{game.dateText || "-"}</td>
                   <td>{Math.round(Number(game.analise?.confianca ?? game.confidence ?? 0))}%</td>
                   <td>

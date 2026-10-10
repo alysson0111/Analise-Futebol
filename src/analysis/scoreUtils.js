@@ -1,5 +1,6 @@
 export function currencyOdd(value) {
-  return Number(value || 0).toFixed(2);
+  const odd = Number(value);
+  return Number.isFinite(odd) && odd > 1 ? odd.toFixed(2) : "-";
 }
 
 export function getTodayInput() {

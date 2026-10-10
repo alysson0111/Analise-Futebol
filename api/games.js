@@ -1,5 +1,6 @@
 import { analyzeFixtures, publicGame } from "./_lib/scanner.js";
 import { fetchTotalCornerToday, totalCornerRowsToFixtures } from "./_lib/totalCorner.js";
+import { enrichWithKalshiOdds } from "./_lib/kalshiOdds.js";
 
 function send(res, status, body) {
   res.statusCode = status;
@@ -40,10 +41,10 @@ async function fetchTotalCornerGames() {
   const totalCornerRows = await fetchTotalCornerToday();
   const rows = totalCornerRowsToFixtures(totalCornerRows);
   const analyzedRows = analyzeFixtures({ response: rows });
-  const games = analyzedRows.map((game) => {
+  const games = await enrichWithKalshiOdds(analyzedRows.map((game) => {
     const source = rows.find((row) => String(row.fixture.id) === String(game.sourceId));
     return addTotalCornerStats(publicGame(game), source);
-  });
+  }));
 
   return {
     updatedAt: new Date().toISOString(),
