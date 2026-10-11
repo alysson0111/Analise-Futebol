@@ -16,10 +16,10 @@ export function schedulePageUrls(markdown, dateIso) {
       const baseUrl = new URL(base);
       const suffix = url.pathname.slice(baseUrl.pathname.length);
       if (url.origin !== baseUrl.origin || !url.pathname.startsWith(baseUrl.pathname)) continue;
-      if (suffix && !/^\/(?:p\.)?\d+$/.test(suffix)) continue;
+      if (suffix && !/^\/(?:page:)?\d+$/.test(decodeURIComponent(suffix))) continue;
       if (!suffix && url.search && ![...url.searchParams.keys()].every((key) => ["page", "p"].includes(key))) continue;
       url.hash = "";
-      urls.add(url.href.replace(/\/p\.1$/, ""));
+      urls.add(url.href.replace(/\/page(?::|%3A)1$/i, ""));
     } catch { /* Ignore non-URL source links. */ }
   }
   // The reader sometimes emits pagination labels without their anchor URLs.
@@ -27,7 +27,7 @@ export function schedulePageUrls(markdown, dateIso) {
   if (pager) {
     for (const label of pager[1].trim().split(/\s+/)) {
       const page = Number(label);
-      if (page > 1 && page <= 50) urls.add(`${base}/p.${page}`);
+      if (page > 1 && page <= 50) urls.add(`${base}/page%3A${page}`);
     }
   }
   return [...urls];

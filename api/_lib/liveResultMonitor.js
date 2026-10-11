@@ -67,8 +67,8 @@ export async function runLiveResultMonitor({ db, fetchLive = fetchTotalCornerTod
 
   const monitors = [...(state.monitors || [])];
   let signalCursor = state.signalCursor;
-  let resultPage = state.resultPage;
-  let resultPages = state.resultPages || [];
+  let resultPage = state.paginationVersion === 2 ? state.resultPage : undefined;
+  let resultPages = state.paginationVersion === 2 ? state.resultPages || [] : [];
   const summary = { date: day.text, updated: 0, watched: 0, unmatched: 0, awaitingFinal: 0, incomplete: 0, errors: [] };
   try {
     const discovery = await discoverPendingSignals(db, { signalCursor }, day);
@@ -150,7 +150,7 @@ export async function runLiveResultMonitor({ db, fetchLive = fetchTotalCornerTod
   } finally {
     const active = monitors.filter((monitor) => monitor.signalIds.length);
     summary.watched = active.length;
-    await ref.set({ dateText: day.text, monitors: active, ...(signalCursor ? { signalCursor } : {}), ...(resultPage ? { resultPage, resultPages } : {}), lockUntil: 0, lastStartedAt: started.getTime(), lastRunAt: clock().toISOString(), lastSummary: summary });
+    await ref.set({ dateText: day.text, monitors: active, ...(signalCursor ? { signalCursor } : {}), ...(resultPage ? { resultPage, resultPages, paginationVersion: 2 } : {}), lockUntil: 0, lastStartedAt: started.getTime(), lastRunAt: clock().toISOString(), lastSummary: summary });
   }
   return summary;
 }

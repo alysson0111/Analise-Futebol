@@ -180,7 +180,7 @@ test("cron requires the exact bearer secret and fails closed without configurati
 test("later schedule pages are checked on subsequent ticks and recover missing matches", async () => {
   const db = fakeDb();
   const base = "https://www.totalcorner.com/pt/match/schedule/20261011";
-  const pageTwo = `${base}/p.2`;
+  const pageTwo = `${base}/page%3A2`;
   const requested = [];
   const options = {
     db, clock: () => db.readTime, fetchLive: async () => [],

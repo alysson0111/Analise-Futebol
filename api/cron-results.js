@@ -24,7 +24,7 @@ export default async function handler(req, res) {
       const day = monitoringDay();
       const page = Number(params.get("page") || 1);
       if (!Number.isInteger(page) || page < 1 || page > 50) return send(400, { error: "Pagina invalida." });
-      const rows = await fetchTotalCornerDate(day.iso, page > 1 ? { pageUrl: `https://www.totalcorner.com/pt/match/schedule/${day.iso.replaceAll("-", "")}/p.${page}` } : {});
+      const rows = await fetchTotalCornerDate(day.iso, page > 1 ? { pageUrl: `https://www.totalcorner.com/pt/match/schedule/${day.iso.replaceAll("-", "")}/page%3A${page}` } : {});
       return send(200, { date: day.text, pages: rows.pages, navigation: rows.navigation, rows });
     }
     if (params.get("status") === "1") {
