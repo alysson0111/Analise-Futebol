@@ -1,7 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import { waitUntil } from "@vercel/functions";
 import { getDb } from "./_lib/firebase.js";
-import { runLiveResultMonitor } from "./_lib/liveResultMonitor.js";
+import { monitoringDay, runLiveResultMonitor } from "./_lib/liveResultMonitor.js";
+import { fetchTotalCornerDate } from "./_lib/totalCorner.js";
 
 export function authorizedCron(header, secret) {
   if (!secret) return false;
@@ -19,6 +20,10 @@ export default async function handler(req, res) {
   try {
     const db = getDb();
     const params = new URL(req.url || "/api/cron-results", "http://localhost").searchParams;
+    if (params.get("source") === "1") {
+      const day = monitoringDay();
+      return send(200, { date: day.text, rows: await fetchTotalCornerDate(day.iso) });
+    }
     if (params.get("status") === "1") {
       const snapshot = await db.collection("runtime").doc("live-results").get();
       const state = snapshot.exists ? snapshot.data() : {};
