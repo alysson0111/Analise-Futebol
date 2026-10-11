@@ -10,9 +10,9 @@ function totalCornerDateUrl(dateIso) {
 export function schedulePageUrls(markdown, dateIso) {
   const base = totalCornerDateUrl(dateIso);
   const urls = new Set([base]);
-  for (const match of String(markdown).matchAll(/\]\((https?:\/\/[^\s)]+)\)/g)) {
+  for (const match of String(markdown).matchAll(/\]\(([^\s)]+)\)/g)) {
     try {
-      const url = new URL(match[1]);
+      const url = new URL(match[1], base);
       const baseUrl = new URL(base);
       const suffix = url.pathname.slice(baseUrl.pathname.length);
       if (url.origin !== baseUrl.origin || !url.pathname.startsWith(baseUrl.pathname)) continue;
@@ -394,7 +394,10 @@ async function fetchTotalCornerPage(url, expectedDate, timeouts = [20000]) {
     throw new Error(`TotalCorner nao confirmou a data ${expectedDate} na pagina de resultados.`);
   }
   const rows = parseTotalCornerMarkdown(markdown);
-  if (expectedDate) Object.defineProperty(rows, "pages", { value: schedulePageUrls(markdown, expectedDate) });
+  if (expectedDate) {
+    Object.defineProperty(rows, "pages", { value: schedulePageUrls(markdown, expectedDate) });
+    Object.defineProperty(rows, "navigation", { value: markdown.slice(-12000) });
+  }
   return rows;
 }
 
@@ -408,5 +411,6 @@ export async function fetchTotalCornerDate(dateIso, { pageUrl } = {}) {
   const rows = await fetchTotalCornerPage(pageUrl || base, dateIso);
   const dated = rows.map((row) => ({ ...row, dateIso }));
   Object.defineProperty(dated, "pages", { value: rows.pages });
+  Object.defineProperty(dated, "navigation", { value: rows.navigation });
   return dated;
 }

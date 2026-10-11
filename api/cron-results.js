@@ -23,7 +23,7 @@ export default async function handler(req, res) {
     if (params.get("source") === "1") {
       const day = monitoringDay();
       const rows = await fetchTotalCornerDate(day.iso);
-      return send(200, { date: day.text, pages: rows.pages, rows });
+      return send(200, { date: day.text, pages: rows.pages, navigation: rows.navigation, rows });
     }
     if (params.get("status") === "1") {
       const snapshot = await db.collection("runtime").doc("live-results").get();
