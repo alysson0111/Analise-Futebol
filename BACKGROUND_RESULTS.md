@@ -18,6 +18,7 @@ A chave esta configurada como variavel sensivel `CRON_SECRET` no Vercel. O arqui
 - Apenas sinais ja salvos sao apurados; esta rotina nao gera novas entradas.
 - O estado fica no Firestore e continua entre chamadas, mesmo com o site fechado.
 - Ao desaparecer do ao vivo, a rotina consulta os resultados da mesma data. Desaparecimento nao confirma termino.
+- A agenda e paginada: as chamadas percorrem suas paginas para encontrar tambem os jogos posteriores aos primeiros 400 registros.
 - Placar de entrada permanece congelado ate FT confirmado. Green, Push e Red seguem o sinal original.
 - Jogos de datas passadas nao entram na rotina.
 - Ao mudar o dia, o acompanhamento do dia anterior e encerrado sem alterar suas entradas.

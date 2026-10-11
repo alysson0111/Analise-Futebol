@@ -7,6 +7,24 @@ function totalCornerDateUrl(dateIso) {
   return `https://www.totalcorner.com/pt/match/schedule/${dateIso.replaceAll("-", "")}`;
 }
 
+export function schedulePageUrls(markdown, dateIso) {
+  const base = totalCornerDateUrl(dateIso);
+  const urls = new Set([base]);
+  for (const match of String(markdown).matchAll(/\]\((https?:\/\/[^\s)]+)\)/g)) {
+    try {
+      const url = new URL(match[1]);
+      const baseUrl = new URL(base);
+      const suffix = url.pathname.slice(baseUrl.pathname.length);
+      if (url.origin !== baseUrl.origin || !url.pathname.startsWith(baseUrl.pathname)) continue;
+      if (suffix && !/^\/(?:p\.)?\d+$/.test(suffix)) continue;
+      if (!suffix && url.search && ![...url.searchParams.keys()].every((key) => ["page", "p"].includes(key))) continue;
+      url.hash = "";
+      urls.add(url.href.replace(/\/p\.1$/, ""));
+    } catch { /* Ignore non-URL source links. */ }
+  }
+  return [...urls];
+}
+
 function readerUrl(url) {
   const separator = url.includes("?") ? "&" : "?";
   return `https://r.jina.ai/${url}${separator}_=${Date.now()}`;
@@ -375,13 +393,20 @@ async function fetchTotalCornerPage(url, expectedDate, timeouts = [20000]) {
   if (expectedDate && !pageDates.includes(expectedDate)) {
     throw new Error(`TotalCorner nao confirmou a data ${expectedDate} na pagina de resultados.`);
   }
-  return parseTotalCornerMarkdown(markdown);
+  const rows = parseTotalCornerMarkdown(markdown);
+  if (expectedDate) Object.defineProperty(rows, "pages", { value: schedulePageUrls(markdown, expectedDate) });
+  return rows;
 }
 
 export async function fetchTotalCornerToday() {
   return fetchTotalCornerPage(TOTALCORNER_TODAY_URL, undefined, [20000, 10000]);
 }
 
-export async function fetchTotalCornerDate(dateIso) {
-  return (await fetchTotalCornerPage(totalCornerDateUrl(dateIso), dateIso)).map((row) => ({ ...row, dateIso }));
+export async function fetchTotalCornerDate(dateIso, { pageUrl } = {}) {
+  const base = totalCornerDateUrl(dateIso);
+  if (pageUrl && !schedulePageUrls(`[page](${pageUrl})`, dateIso).includes(pageUrl)) throw new Error("Pagina de resultados invalida.");
+  const rows = await fetchTotalCornerPage(pageUrl || base, dateIso);
+  const dated = rows.map((row) => ({ ...row, dateIso }));
+  Object.defineProperty(dated, "pages", { value: rows.pages });
+  return dated;
 }

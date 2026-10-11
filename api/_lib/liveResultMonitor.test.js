@@ -176,3 +176,25 @@ test("cron requires the exact bearer secret and fails closed without configurati
   assert.equal(authorizedCron(undefined, "correct"), false);
   assert.equal(authorizedCron("Bearer undefined", undefined), false);
 });
+
+test("later schedule pages are checked on subsequent ticks and recover missing matches", async () => {
+  const db = fakeDb();
+  const base = "https://www.totalcorner.com/pt/match/schedule/20261011";
+  const pageTwo = `${base}/p.2`;
+  const requested = [];
+  const options = {
+    db, clock: () => db.readTime, fetchLive: async () => [],
+    fetchDate: async (dateIso, { pageUrl }) => {
+      requested.push(pageUrl || base);
+      const rows = pageUrl === pageTwo ? [{ ...row("FT"), dateIso }] : [];
+      rows.pages = [base, pageTwo];
+      return rows;
+    }
+  };
+  assert.equal((await runLiveResultMonitor(options)).updated, 0);
+  assert.equal(db.state.resultPage, pageTwo);
+  db.readTime = new Date(db.readTime.getTime() + 60000);
+  assert.equal((await runLiveResultMonitor(options)).updated, 1);
+  assert.deepEqual(requested, [base, pageTwo]);
+  assert.equal(db.signals.get("today").result, "green");
+});

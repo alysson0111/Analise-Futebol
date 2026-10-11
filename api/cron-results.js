@@ -22,7 +22,8 @@ export default async function handler(req, res) {
     const params = new URL(req.url || "/api/cron-results", "http://localhost").searchParams;
     if (params.get("source") === "1") {
       const day = monitoringDay();
-      return send(200, { date: day.text, rows: await fetchTotalCornerDate(day.iso) });
+      const rows = await fetchTotalCornerDate(day.iso);
+      return send(200, { date: day.text, pages: rows.pages, rows });
     }
     if (params.get("status") === "1") {
       const snapshot = await db.collection("runtime").doc("live-results").get();

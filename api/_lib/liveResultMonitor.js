@@ -67,6 +67,8 @@ export async function runLiveResultMonitor({ db, fetchLive = fetchTotalCornerTod
 
   const monitors = [...(state.monitors || [])];
   let signalCursor = state.signalCursor;
+  let resultPage = state.resultPage;
+  let resultPages = state.resultPages || [];
   const summary = { date: day.text, updated: 0, watched: 0, unmatched: 0, awaitingFinal: 0, incomplete: 0, errors: [] };
   try {
     const discovery = await discoverPendingSignals(db, { signalCursor }, day);
@@ -95,7 +97,14 @@ export async function runLiveResultMonitor({ db, fetchLive = fetchTotalCornerTod
       return !game || (!isFinishedGame(game) && Number(game.elapsed) >= 90);
     })) {
       try {
-        const rows = await fetchDate(day.iso);
+        const rows = await fetchDate(day.iso, { pageUrl: resultPage });
+        if (rows.pages?.length) {
+          resultPages = [...new Set([...resultPages, ...rows.pages])].sort();
+          const index = Math.max(0, resultPages.indexOf(resultPage || resultPages[0]));
+          summary.resultPages = resultPages.length;
+          summary.resultPage = resultPage || resultPages[0];
+          resultPage = resultPages[(index + 1) % resultPages.length];
+        }
         finalGames = analyzeFixtures({ response: totalCornerRowsToFixtures(rows) });
       } catch (error) {
         summary.errors.push(error.message);
@@ -141,7 +150,7 @@ export async function runLiveResultMonitor({ db, fetchLive = fetchTotalCornerTod
   } finally {
     const active = monitors.filter((monitor) => monitor.signalIds.length);
     summary.watched = active.length;
-    await ref.set({ dateText: day.text, monitors: active, ...(signalCursor ? { signalCursor } : {}), lockUntil: 0, lastStartedAt: started.getTime(), lastRunAt: clock().toISOString(), lastSummary: summary });
+    await ref.set({ dateText: day.text, monitors: active, ...(signalCursor ? { signalCursor } : {}), ...(resultPage ? { resultPage, resultPages } : {}), lockUntil: 0, lastStartedAt: started.getTime(), lastRunAt: clock().toISOString(), lastSummary: summary });
   }
   return summary;
 }
