@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readSignalSync } from "../signals.js";
 import { selectPendingSignalIds } from "../../src/analysis/reportSignals.js";
 
-test("report polls read changes and at most twenty pending records, not the entire bank", async () => {
+test("report polls read only changes and ignore legacy pending-ID hydration", async () => {
   const calls = [];
   const time = { toDate: () => new Date("2026-10-10T12:00:00Z") };
   const doc = (id) => ({ id, exists: true, data: () => ({ result: "pendente" }) });
@@ -16,17 +16,14 @@ test("report polls read changes and at most twenty pending records, not the enti
   };
   const db = {
     collection: () => query,
-    async getAll(...refs) {
-      assert.equal(refs.length, 20);
-      return refs.map((ref) => doc(ref.id));
-    }
+    async getAll() { throw new Error("Report polls must not reread historical pending signals"); }
   };
   const params = new URLSearchParams({ since: "2026-10-10T11:59:00Z", pendingIds: Array.from({ length: 30 }, (_, i) => `pending${i}`).join(",") });
   const result = await readSignalSync(db, params);
   assert.equal(calls[0][0], "where");
   assert.equal(calls[0][1], "updatedAt");
   assert.equal(calls.some((call) => call.includes("createdAt")), false);
-  assert.equal(result.signals.length, 21);
+  assert.equal(result.signals.length, 1);
   assert.equal(result.syncToken, "2026-10-10T12:00:00.000Z");
 });
 

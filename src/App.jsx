@@ -5,7 +5,7 @@ import Prematch from "./pages/Prematch.jsx";
 import GameDetails from "./pages/GameDetails.jsx";
 import { getTodayInput } from "./analysis/scoreUtils.js";
 import { buildFinalSignalUpdate } from "./analysis/signalSettlement.js";
-import { mergeReportSignals, selectPendingSignalIds } from "./analysis/reportSignals.js";
+import { mergeReportSignals } from "./analysis/reportSignals.js";
 import { useLiveGames } from "./hooks/useLiveGames.js";
 import { usePrematchGames } from "./hooks/usePrematchGames.js";
 import { useGameAnalysis } from "./hooks/useGameAnalysis.js";
@@ -163,8 +163,6 @@ export default function App() {
   const [liveInterval, setLiveInterval] = useState(15000);
   const [filters, setFilters] = useState({ league: "all", market: "all", minConfidence: 0, minOdd: 0, search: "", mostrarApenasAprovados: false });
   const [signals, setSignals] = useState([]);
-  const signalsRef = useRef(signals);
-  signalsRef.current = signals;
   const [bankStatus, setBankStatus] = useState("Servidor conectado ao Firestore pela API.");
   const savedSignalKeysRef = useRef(new Set());
   const settlingSignalIdsRef = useRef(new Set());
@@ -188,26 +186,16 @@ export default function App() {
   useEffect(() => {
     let stopped = false;
     let timer;
-    let cursor = 0;
     let since = "";
-    let pendingOffset = 0;
     async function refreshReport() {
       let retryDelay = 60000;
       try {
-        const pending = selectPendingSignalIds(signalsRef.current, pendingOffset);
-        const payload = await listSignals(cursor, since, pending.ids);
+        const payload = await listSignals(since);
         if (stopped) return;
         since = payload.syncToken || since;
-        pendingOffset = pending.nextOffset;
-        cursor = payload.settlement?.nextCursor || 0;
         const saved = payload.signals || [];
         saved.forEach((signal) => { if (signal.key) savedSignalKeysRef.current.add(signal.key); });
         setSignals((current) => mergeReportSignals(current, saved, deletedSignalIdsRef.current));
-        if (payload.settlement?.errors?.length) {
-          setBankStatus(`Resultados: falha na fonte. ${payload.settlement.errors[0]}`);
-        } else if (payload.settlement?.updated) {
-          setBankStatus(`${payload.settlement.updated} resultado(s) final(is) atualizado(s).`);
-        }
       } catch (error) {
         if (/quota|RESOURCE_EXHAUSTED/i.test(error.message)) retryDelay = 300000;
         if (!stopped) setBankStatus(`Erro ao consultar resultados: ${error.message}`);
@@ -266,7 +254,7 @@ export default function App() {
     });
 
     const pendingSignals = signals.filter((signal) => {
-      return signal.id && signal.sourceId && signal.result === "pendente" && !settlingSignalIdsRef.current.has(signal.id);
+      return signal.id && signal.sourceId && signal.dateText === new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) && signal.result === "pendente" && !settlingSignalIdsRef.current.has(signal.id);
     });
 
     if (!pendingSignals.length || !gamesBySource.size) return;

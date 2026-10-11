@@ -1,11 +1,8 @@
 import { apiJson } from "../api/serverApi.js";
 
-export function listSignals(cursor = 0, since = "", pendingIds = []) {
-  const query = new URLSearchParams({ cursor: String(cursor) });
-  if (since) {
-    query.set("since", since);
-    query.set("pendingIds", pendingIds.join(","));
-  }
+export function listSignals(since = "") {
+  const query = new URLSearchParams();
+  if (since) query.set("since", since);
   return apiJson(`/api/signals?${query}`);
 }
 

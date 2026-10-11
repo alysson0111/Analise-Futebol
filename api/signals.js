@@ -1,8 +1,5 @@
 import { getDb, now } from "./_lib/firebase.js";
-import { analyzeFixtures } from "./_lib/scanner.js";
-import { fetchTotalCornerDate, totalCornerRowsToFixtures } from "./_lib/totalCorner.js";
 import { isFinishedGame, buildFinalSignalUpdate } from "../src/analysis/signalSettlement.js";
-import { selectResultDates, findResultGame } from "./_lib/signalResultLookup.js";
 
 const FINISHED_STATUSES = new Set(["FT", "AET", "PEN"]);
 const SIGNALS_READ_LIMIT = 2000;
@@ -216,51 +213,6 @@ function parseForebetMatchScore(markdown) {
 
 
 
-async function settleSignalsFromTotalCorner(db, signals, cursor = 0) {
-  const pending = signals.filter((signal) => signal.id && !signal.finalConfirmed && (signal.result === "pendente" || !isFinishedGame(signal)));
-  if (!pending.length) return { signals, settlement: { updated: 0, errors: [], nextCursor: 0 } };
-
-  const updates = new Map();
-  let games = [];
-  const plan = selectResultDates(pending, cursor);
-  const settlementStatus = { updated: 0, errors: [], checkedDates: plan.dates, nextCursor: plan.nextCursor };
-  try {
-    const rowResults = await Promise.allSettled(plan.dates.map((dateIso) => fetchTotalCornerDate(dateIso)));
-    rowResults.forEach((result, index) => {
-      if (result.status === "rejected") settlementStatus.errors.push(`${plan.dates[index]}: ${result.reason?.message || "Falha ao buscar resultado"}`);
-      else if (!result.value.length) settlementStatus.errors.push(`${plan.dates[index]}: fonte sem jogos legiveis`);
-    });
-    const totalCornerRows = rowResults.flatMap((result) => result.status === "fulfilled" ? result.value : []);
-    games = analyzeFixtures({ response: totalCornerRowsToFixtures(uniqueRows(totalCornerRows)) });
-    settlementStatus.finalGamesFound = games.filter(isFinishedGame).length;
-  } catch (error) {
-    settlementStatus.errors.push(error.message || "Falha na consulta de resultados");
-    return { signals, settlement: settlementStatus };
-  }
-
-  for (const signal of pending) {
-    const game = findResultGame(signal, games);
-    if (!game) continue;
-    const currentUpdate = buildFinalSignalUpdate(signal, game);
-    if (!currentUpdate) continue;
-
-    const settlement = {
-      ...currentUpdate,
-      settledAtText: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
-      updatedAt: now()
-    };
-    updates.set(signal.id, settlement);
-  }
-  const entries = [...updates.entries()];
-  for (let index = 0; index < entries.length; index += 450) {
-    const batch = db.batch();
-    for (const [id, update] of entries.slice(index, index + 450)) batch.update(db.collection("sinais").doc(id), update);
-    await batch.commit();
-  }
-  settlementStatus.updated = updates.size;
-  return { signals: signals.map((signal) => updates.has(signal.id) ? { ...signal, ...updates.get(signal.id) } : signal), settlement: settlementStatus };
-}
-
 export async function readSignalSync(db, params) {
   const sinceDate = params.get("since") ? new Date(params.get("since")) : null;
   const collection = db.collection("sinais");
@@ -269,11 +221,6 @@ export async function readSignalSync(db, params) {
     : collection.orderBy("createdAt", "desc");
   const snapshot = await query.limit(SIGNALS_READ_LIMIT).get();
   const records = new Map(snapshot.docs.map((doc) => [doc.id, { id: doc.id, ...doc.data() }]));
-  const pendingIds = sinceDate ? [...new Set((params.get("pendingIds") || "").split(",").filter((id) => /^[a-zA-Z0-9_-]{1,128}$/.test(id)))].slice(0, 20) : [];
-  if (pendingIds.length) {
-    const pendingDocs = await db.getAll(...pendingIds.map((id) => collection.doc(id)));
-    pendingDocs.filter((doc) => doc.exists).forEach((doc) => records.set(doc.id, { id: doc.id, ...doc.data() }));
-  }
   // Advance only to the last returned update when a delta page is full.
   const syncTime = sinceDate && snapshot.size === SIGNALS_READ_LIMIT
     ? snapshot.docs.at(-1).data().updatedAt
@@ -291,9 +238,7 @@ async function listSignals(req, res) {
     return send(res, 400, { error: "Data de sincronizacao invalida." });
   }
   const { signals, syncToken } = await readSignalSync(db, params);
-  const cursor = params.get("cursor");
-  const payload = await settleSignalsFromTotalCorner(db, signals, cursor);
-  send(res, 200, { ...payload, syncToken, limit: SIGNALS_READ_LIMIT });
+  send(res, 200, { signals, syncToken, limit: SIGNALS_READ_LIMIT });
 }
 
 async function saveSignal(req, res) {
@@ -330,6 +275,9 @@ async function updateResult(req, res) {
   const snapshot = await doc.get();
   if (!snapshot.exists) return send(res, 404, { error: "Sinal nao encontrado." });
   const signal = snapshot.data();
+  if (scoreText && signal.dateText !== new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })) {
+    return send(res, 409, { error: "Atualizacao automatica limitada aos jogos de hoje." });
+  }
   let finalUpdate;
   if (scoreText && isFinishedGame({ liveStatus })) {
     finalUpdate = buildFinalSignalUpdate(signal, { scoreText, liveStatus, liveCorners });

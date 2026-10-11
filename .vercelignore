@@ -1,0 +1,6 @@
+work/
+.env*
+.repo/
+.git/
+.agents/
+.codex/
