@@ -1,3 +1,5 @@
+import { fetchSourceText } from "./sourceRequest.js";
+
 const TOTALCORNER_TODAY_URL = "https://www.totalcorner.com/pt/match/today";
 
 function totalCornerDateUrl(dateIso) {
@@ -357,9 +359,9 @@ export function mergeTotalCornerRows(rows, totalCornerRows) {
   });
 }
 
-async function fetchTotalCornerPage(url, expectedDate) {
-  const response = await fetch(readerUrl(url), {
-    signal: AbortSignal.timeout(20000),
+async function fetchTotalCornerPage(url, expectedDate, timeouts = [20000]) {
+  const markdown = await fetchSourceText(readerUrl(url), {
+    timeouts,
     headers: {
       "User-Agent": "Mozilla/5.0 Analise-Futebol/1.0",
       "Cache-Control": "no-cache",
@@ -369,8 +371,6 @@ async function fetchTotalCornerPage(url, expectedDate) {
     }
   });
 
-  if (!response.ok) throw new Error(`TotalCorner retornou ${response.status}.`);
-  const markdown = await response.text();
   const pageDates = markdown.split("\n").map(cleanLine).map((line) => line.match(/^(\d{4}-\d{2}-\d{2})(?:\s|$)/)?.[1]).filter(Boolean);
   if (expectedDate && !pageDates.includes(expectedDate)) {
     throw new Error(`TotalCorner nao confirmou a data ${expectedDate} na pagina de resultados.`);
@@ -379,7 +379,7 @@ async function fetchTotalCornerPage(url, expectedDate) {
 }
 
 export async function fetchTotalCornerToday() {
-  return fetchTotalCornerPage(TOTALCORNER_TODAY_URL);
+  return fetchTotalCornerPage(TOTALCORNER_TODAY_URL, undefined, [20000, 10000]);
 }
 
 export async function fetchTotalCornerDate(dateIso) {

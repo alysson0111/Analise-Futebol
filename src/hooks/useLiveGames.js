@@ -6,6 +6,7 @@ export function useLiveGames(intervalMs) {
   const activeRef = useRef(false);
   const refreshingRef = useRef(false);
   const intervalRef = useRef(Number(intervalMs || 30000));
+  const lastUpdateRef = useRef("");
   const [games, setGames] = useState([]);
   const [active, setActive] = useState(false);
   const [updatedAt, setUpdatedAt] = useState("Aguardando ao vivo");
@@ -15,11 +16,7 @@ export function useLiveGames(intervalMs) {
     if (!activeRef.current) return;
     if (timerRef.current) window.clearTimeout(timerRef.current);
     timerRef.current = window.setTimeout(() => {
-      refresh().catch((error) => {
-        stop();
-        setGames([]);
-        setUpdatedAt(`Erro ao vivo: ${error.message}`);
-      });
+      void refresh();
     }, intervalRef.current);
   }
 
@@ -40,8 +37,12 @@ export function useLiveGames(intervalMs) {
     try {
       const payload = await fetchLiveFixtures();
       setGames(payload.games || []);
-      setUpdatedAt(`Atualizado as ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} - ${payload.count || 0} jogo(s) em andamento`);
+      lastUpdateRef.current = `Atualizado as ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} - ${payload.count || 0} jogo(s) em andamento`;
+      setUpdatedAt(lastUpdateRef.current);
       setStatusText("Ao vivo ativo");
+    } catch (error) {
+      setUpdatedAt(`${lastUpdateRef.current ? `${lastUpdateRef.current} | Dados desatualizados. ` : ""}${error.message}`);
+      setStatusText(activeRef.current ? "Falha na consulta. Tentando novamente automaticamente..." : "Falha na consulta ao vivo");
     } finally {
       refreshingRef.current = false;
       scheduleNext();
