@@ -13,14 +13,15 @@ A chave esta configurada como variavel sensivel `CRON_SECRET` no Vercel. O arqui
 ## Escopo
 
 - Somente jogos de hoje, considerando America/Sao_Paulo.
-- O acompanhamento comeca quando a fonte informa jogo ao vivo com 90 minutos ou mais.
+- Os sinais pendentes de hoje entram no acompanhamento, sem limite de 60 jogos.
+- Jogos a partir de 90 minutos e jogos ausentes do ao vivo sao conferidos na agenda da mesma data. FT de hoje tambem e recuperado quando nenhuma chamada viu o minuto 90.
 - Apenas sinais ja salvos sao apurados; esta rotina nao gera novas entradas.
 - O estado fica no Firestore e continua entre chamadas, mesmo com o site fechado.
 - Ao desaparecer do ao vivo, a rotina consulta os resultados da mesma data. Desaparecimento nao confirma termino.
 - Placar de entrada permanece congelado ate FT confirmado. Green, Push e Red seguem o sinal original.
-- Jogos de datas passadas e jogos ja encerrados antes de serem observados nao entram na rotina.
+- Jogos de datas passadas nao entram na rotina.
 - Ao mudar o dia, o acompanhamento do dia anterior e encerrado sem alterar suas entradas.
-- Somente sinais dos confrontos acompanhados sao lidos; nenhum historico completo e varrido.
+- Na primeira chamada do dia, a descoberta consulta somente a data atual. As chamadas seguintes leem apenas novas entradas pelo horario de criacao; nenhum historico completo e varrido.
 
 ## Diagnostico
 
