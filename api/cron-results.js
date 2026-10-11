@@ -22,7 +22,9 @@ export default async function handler(req, res) {
     const params = new URL(req.url || "/api/cron-results", "http://localhost").searchParams;
     if (params.get("source") === "1") {
       const day = monitoringDay();
-      const rows = await fetchTotalCornerDate(day.iso);
+      const page = Number(params.get("page") || 1);
+      if (!Number.isInteger(page) || page < 1 || page > 50) return send(400, { error: "Pagina invalida." });
+      const rows = await fetchTotalCornerDate(day.iso, page > 1 ? { pageUrl: `https://www.totalcorner.com/pt/match/schedule/${day.iso.replaceAll("-", "")}/p.${page}` } : {});
       return send(200, { date: day.text, pages: rows.pages, navigation: rows.navigation, rows });
     }
     if (params.get("status") === "1") {

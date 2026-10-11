@@ -22,6 +22,14 @@ export function schedulePageUrls(markdown, dateIso) {
       urls.add(url.href.replace(/\/p\.1$/, ""));
     } catch { /* Ignore non-URL source links. */ }
   }
+  // The reader sometimes emits pagination labels without their anchor URLs.
+  const pager = String(markdown).match(/\n((?:\s*\d+\s*\n)+)\s*[»›>]+\s*\nTotalCorner/i);
+  if (pager) {
+    for (const label of pager[1].trim().split(/\s+/)) {
+      const page = Number(label);
+      if (page > 1 && page <= 50) urls.add(`${base}/p.${page}`);
+    }
+  }
   return [...urls];
 }
 
